@@ -52,10 +52,11 @@ export function Inspector({ world, seed, cursorX, cursorY }: Props) {
             <h3>Legend</h3>
             <ul>
               <li><span className="glyph">~</span> water</li>
-              <li><span className="glyph">^</span> mountain</li>
+              <li><span className="glyph">^</span> rocky mountain</li>
+              <li><span className="glyph">A</span> alpine</li>
               <li><span className="glyph">.</span> desert</li>
-              <li><span className="glyph">"</span> swamp</li>
               <li><span className="glyph">,</span> plains</li>
+              <li><span className="glyph">T</span> forest</li>
               <li><span className="glyph">@</span> cursor</li>
             </ul>
             <p className="hint">Move: arrow keys / WASD / D-pad</p>

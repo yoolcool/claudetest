@@ -3,11 +3,12 @@ import type { Overworld } from '../world/types';
 
 /** ASCII glyph for each biome */
 const BIOME_CHAR: Record<string, string> = {
-  water: '~',
-  mountain: '^',
-  desert: '.',
-  swamp: '"',
-  plains: ',',
+  water:          '~',
+  rocky_mountain: '^',
+  alpine:         'A',
+  desert:         '.',
+  plains:         ',',
+  forest:         'T',
 };
 
 const SWIPE_THRESHOLD = 25;

@@ -1,5 +1,11 @@
 /** Biome identifiers */
-export type Biome = 'water' | 'mountain' | 'desert' | 'swamp' | 'plains';
+export type Biome =
+  | 'water'
+  | 'rocky_mountain'
+  | 'alpine'
+  | 'desert'
+  | 'plains'
+  | 'forest';
 
 /** A single cell in the overworld grid */
 export type OverworldCell = {
