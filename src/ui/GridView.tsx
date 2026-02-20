@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import type { Overworld } from '../world/types';
 
 /** ASCII glyph for each biome */

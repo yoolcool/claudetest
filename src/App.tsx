@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { generateOverworld, serializeOverworld } from './world/overworld';
 import type { Overworld } from './world/types';
 import { GridView } from './ui/GridView';
