@@ -8,6 +8,11 @@ export type SimEvent = {
   text: string;
 };
 
+/** Per-entity proximity state tracked across ticks. */
+export type EntityNearRecord = { wasNear: boolean; lastSpokeAt: number };
+/** Map from entity id → proximity record. */
+export type NearStateMap = Map<number, EntityNearRecord>;
+
 /** Korean encounter messages per entity kind. */
 const ENCOUNTER_MESSAGES: Record<EntityKind, string[]> = {
   goat: [
@@ -36,7 +41,7 @@ const ENCOUNTER_MESSAGES: Record<EntityKind, string[]> = {
   ],
 };
 
-/** System messages shown at fixed tick intervals. */
+/** System ambient messages shown at fixed tick intervals. */
 export const SYSTEM_MESSAGES: string[] = [
   '바람이 숲 사이를 조용히 스쳐 지나갑니다.',
   '멀리서 천둥소리가 희미하게 들립니다.',
@@ -48,32 +53,86 @@ export const SYSTEM_MESSAGES: string[] = [
   '세상이 잠시 고요해집니다.',
 ];
 
+/** Proximity radius (Chebyshev distance) to trigger encounter messages. */
+const NEAR_RADIUS = 2;
+
+/** Minimum ticks between two messages from the same entity. */
+const COOLDOWN_TICKS = 30;
+
+/** Base speak probability per encounter entry event. */
+const SPEAK_PROB: Record<EntityKind, number> = {
+  wanderer: 0.60,
+  goat:     0.35,
+  bird:     0.35,
+  frog:     0.35,
+};
+
 /** Chebyshev distance (max of |dx|, |dy|). */
 function chebyshev(ax: number, ay: number, bx: number, by: number): number {
   return Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 }
 
+/** Deterministic float in [0, 1) for probability gate. */
+function deterministicRand(seed: number, entityId: number, tick: number): number {
+  let h = (seed ^ entityId * 0x9e3779b9 ^ tick * 0x6b43) >>> 0;
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x45d9f3b);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 /**
- * Check whether the cursor is within `radius` cells (Chebyshev) of any entity.
- * Returns a Korean encounter message string, or null if no encounter.
+ * Update proximity state for all entities and return at most one encounter
+ * message (or null).
+ *
+ * Trigger rules:
+ *  1. FAR → NEAR transition only (entry event).
+ *  2. Per-entity cooldown of COOLDOWN_TICKS ticks.
+ *  3. Probabilistic gate (SPEAK_PROB per kind).
+ *  4. Global throttle: at most 1 message returned.
+ *  5. Wanderer messages have priority over animal messages.
+ *
+ * @param nearState - mutable Map; updated in-place (caller may treat it as immutable by copying first).
  */
-export function checkProximity(
+export function updateProximity(
   cursorX: number,
   cursorY: number,
-  entities: { kind: EntityKind; x: number; y: number }[],
-  radius: number,
-  seed: number,
+  entities: { id: number; kind: EntityKind; x: number; y: number }[],
+  nearState: NearStateMap,
   tick: number,
+  seed: number,
 ): string | null {
+  type Candidate = { kind: EntityKind; msg: string };
+  const candidates: Candidate[] = [];
+
   for (const e of entities) {
-    if (chebyshev(cursorX, cursorY, e.x, e.y) <= radius) {
-      const msgs = ENCOUNTER_MESSAGES[e.kind];
-      // Pick a message deterministically from kind + position + tick.
-      const idx = (e.x * 7 + e.y * 13 + tick * 3 + seed) % msgs.length;
-      return msgs[idx];
+    const dist = chebyshev(cursorX, cursorY, e.x, e.y);
+    const isNearNow = dist <= NEAR_RADIUS;
+    const prev = nearState.get(e.id) ?? { wasNear: false, lastSpokeAt: -999 };
+
+    const enteredNear = !prev.wasNear && isNearNow;
+
+    // Update wasNear regardless of whether we speak.
+    nearState.set(e.id, { wasNear: isNearNow, lastSpokeAt: prev.lastSpokeAt });
+
+    if (enteredNear && tick - prev.lastSpokeAt >= COOLDOWN_TICKS) {
+      const r = deterministicRand(seed, e.id, tick);
+      if (r < SPEAK_PROB[e.kind]) {
+        const msgs = ENCOUNTER_MESSAGES[e.kind];
+        const idx = (e.x * 7 + e.y * 13 + tick) % msgs.length;
+        candidates.push({ kind: e.kind, msg: msgs[idx] });
+        // Record lastSpokeAt immediately so multiple candidates in the same
+        // call don't each update it independently.
+        nearState.set(e.id, { wasNear: isNearNow, lastSpokeAt: tick });
+      }
     }
   }
-  return null;
+
+  if (candidates.length === 0) return null;
+
+  // Priority: wanderer first, then first in list.
+  const chosen = candidates.find((c) => c.kind === 'wanderer') ?? candidates[0];
+  return chosen.msg;
 }
 
 /**

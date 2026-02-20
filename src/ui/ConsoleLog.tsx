@@ -14,9 +14,11 @@ type TypewriterEntry = {
 
 type Props = {
   events: SimEvent[];
+  /** Extra CSS class (e.g. 'console-desktop' for the desktop-only instance). */
+  className?: string;
 };
 
-export function ConsoleLog({ events }: Props) {
+export function ConsoleLog({ events, className }: Props) {
   const [entries, setEntries] = useState<TypewriterEntry[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -79,7 +81,7 @@ export function ConsoleLog({ events }: Props) {
   }, [entries]);
 
   return (
-    <div className="console-log" aria-live="polite" aria-label="이벤트 로그">
+    <div className={`console-log${className ? ` ${className}` : ''}`} aria-live="polite" aria-label="이벤트 로그">
       {entries.map((e) => (
         <div key={e.id} className={`console-line console-line--${e.type}`}>
           <span className="console-text">{e.visible}</span>

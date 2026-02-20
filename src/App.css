@@ -6,7 +6,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;       /* fallback */
-  height: 100dvh;      /* iOS Safari: shrinks when address bar appears  */
+  height: 100dvh;
   padding: 0.5rem 0.75rem;
   gap: 0.5rem;
   overflow: hidden;
@@ -26,8 +26,7 @@
 }
 
 /* =====================================================================
-   Main content area — takes all remaining vertical space.
-   min-height: 0 is required so flex children can shrink below content size.
+   Main content area
    ===================================================================== */
 .main {
   display: flex;
@@ -40,20 +39,19 @@
   overflow: hidden;
 }
 
-/* ---- Grid column (grid-wrap stacked above D-pad) ---- */
-.grid-col {
+/* =====================================================================
+   Map area — wraps GridView + D-pad overlay.
+   position:relative lets the D-pad overlay use absolute positioning.
+   ===================================================================== */
+.map-area {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  /* On desktop the col sizes naturally to its content. */
+  /* On desktop: sizes to content; on mobile: flex:1 via media query. */
 }
 
-/* =====================================================================
-   Grid wrapper — the key element that ResizeObserver measures.
-   On desktop it sizes to the <pre> content.
-   On mobile (via media query) it becomes flex:1 so it fills available space.
-   ===================================================================== */
+/* ---- Grid wrapper (ResizeObserver target, inside GridView component) ---- */
 .grid-wrap {
   display: flex;
   justify-content: center;
@@ -64,7 +62,6 @@
 /* ---- Grid <pre> ---- */
 .grid-view {
   font-family: 'Courier New', Courier, monospace;
-  /* font-size and line-height are set dynamically via inline style */
   color: #bbb;
   background-color: #0a0a0a;
   border: 1px solid #333;
@@ -73,15 +70,14 @@
   cursor: default;
   white-space: pre;
   user-select: none;
-  touch-action: none; /* prevent browser scroll/zoom on swipe */
+  touch-action: none;
 }
 
 .grid-view:focus {
   border-color: #555;
 }
 
-/* Hidden single-char span — measures char dimensions for tap-to-jump.
-   font-size and line-height are set via inline style to match the <pre>. */
+/* Hidden single-char span — measures char dimensions for tap-to-jump. */
 .char-measure {
   font-family: 'Courier New', Courier, monospace;
   position: absolute;
@@ -90,7 +86,22 @@
   white-space: pre;
 }
 
-/* ---- TouchPad (D-pad) ---- */
+/* ---- D-pad overlay — floats over bottom-right of the map ----------- */
+.touchpad-overlay {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+  opacity: 0.82;
+  /* Taps go through to the map for non-button areas */
+  pointer-events: none;
+}
+
+.touchpad-overlay .touchpad {
+  pointer-events: auto;
+}
+
+/* ---- TouchPad ---- */
 .touchpad {
   display: flex;
   flex-direction: column;
@@ -111,22 +122,23 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #1e1e1e;
-  border: 1px solid #444;
+  background-color: #1a1a1a;
+  border: 1px solid #555;
   color: #ccc;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   user-select: none;
   touch-action: none;
   transition: background-color 80ms, border-color 80ms;
   min-width: 44px;
   min-height: 44px;
+  backdrop-filter: blur(4px);
 }
 
 .dpad-btn:active,
 .dpad-btn:hover {
   background-color: #2e2e2e;
-  border-color: #777;
+  border-color: #888;
 }
 
 .dpad-select {
@@ -141,8 +153,13 @@
 }
 
 /* =====================================================================
-   Inspector
+   Inspector (desktop — right column)
    ===================================================================== */
+.inspector-desktop-wrap {
+  min-width: 160px;
+  flex-shrink: 0;
+}
+
 .inspector {
   min-width: 160px;
   background-color: #0f0f0f;
@@ -176,7 +193,6 @@
   color: #aaa;
 }
 
-/* Toggle button — inherits global button reset then overrides */
 .inspector-toggle {
   background: none;
   border: none;
@@ -193,7 +209,6 @@
   border: none;
 }
 
-/* Compact one-line summary shown when collapsed */
 .inspector-compact {
   display: flex;
   align-items: center;
@@ -202,21 +217,10 @@
   flex-wrap: wrap;
 }
 
-.ic-item {
-  color: #bbb;
-  white-space: nowrap;
-}
+.ic-item { color: #bbb; white-space: nowrap; }
+.ic-item b { color: #ddd; font-weight: normal; }
+.ic-sep { color: #444; }
 
-.ic-item b {
-  color: #ddd;
-  font-weight: normal;
-}
-
-.ic-sep {
-  color: #444;
-}
-
-/* Full table */
 .inspector table {
   border-collapse: collapse;
   width: 100%;
@@ -235,7 +239,6 @@
   padding-bottom: 0.2rem;
 }
 
-/* ---- Legend ---- */
 .legend {
   margin-top: 0.75rem;
   border-top: 1px solid #333;
@@ -248,10 +251,7 @@
   margin-bottom: 0.35rem;
 }
 
-.legend ul {
-  list-style: none;
-  padding: 0;
-}
+.legend ul { list-style: none; padding: 0; }
 
 .legend li {
   color: #aaa;
@@ -259,10 +259,7 @@
   margin-bottom: 0.12rem;
 }
 
-.glyph {
-  color: #ddd;
-  margin-right: 0.4rem;
-}
+.glyph { color: #ddd; margin-right: 0.4rem; }
 
 .hint {
   margin-top: 0.5rem;
@@ -271,9 +268,7 @@
 }
 
 /* =====================================================================
-   TILE COLOURS  (dark-theme palette)
-   All biome spans inside <pre> get these colours.
-   The same classes are reused in the Inspector legend.
+   TILE COLOURS
    ===================================================================== */
 .tile-water          { color: #4FC3F7; }
 .tile-rocky-mountain { color: #B0BEC5; }
@@ -282,7 +277,6 @@
 .tile-plains         { color: #9CCC65; }
 .tile-forest         { color: #2E7D32; }
 
-/* Player cursor — bold red with a subtle background highlight */
 .tile-player {
   color: #FF5252;
   font-weight: bold;
@@ -292,28 +286,32 @@
 /* =====================================================================
    ENTITY TILE COLOURS
    ===================================================================== */
-.tile-entity             { font-weight: bold; }
-.tile-entity--goat       { color: #F5CBA7; }   /* soft tan  */
-.tile-entity--bird       { color: #AED6F1; }   /* sky blue  */
-.tile-entity--frog       { color: #A9DFBF; }   /* mint green */
-.tile-entity--wanderer   { color: #D7BDE2; }   /* lavender  */
+.tile-entity           { font-weight: bold; }
+.tile-entity--goat     { color: #F5CBA7; }
+.tile-entity--bird     { color: #AED6F1; }
+.tile-entity--frog     { color: #A9DFBF; }
+.tile-entity--wanderer { color: #D7BDE2; }
 
 /* =====================================================================
-   CONSOLE LOG  — fixed-height strip at the bottom of the app
+   CONSOLE LOG  — fill its container; height controlled by parent
    ===================================================================== */
 .console-log {
-  flex-shrink: 0;
-  height: 5.5rem;
   overflow-y: auto;
   background-color: #050505;
-  border: 1px solid #222;
   padding: 0.3rem 0.6rem;
-  font-family: 'Courier New', Courier, monospace;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'NanumGothic', 'Courier New', Courier, monospace;
   font-size: 0.78rem;
   line-height: 1.45;
-  /* Korean font stack */
-  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'NanumGothic', 'Courier New', Courier, monospace;
   scroll-behavior: smooth;
+  /* Height comes from the parent (console-desktop or bp-content). */
+  height: 100%;
+}
+
+/* Desktop: fixed strip below .main */
+.console-log.console-desktop {
+  flex-shrink: 0;
+  height: 5.5rem;
+  border: 1px solid #222;
 }
 
 .console-line {
@@ -324,83 +322,197 @@
   word-break: break-all;
 }
 
-.console-line--system   { color: #888; }
-.console-line--encounter{ color: #C5E1A5; }   /* light green  */
-.console-line--tick     { color: #546E7A; }   /* muted blue-grey */
-.console-line--info     { color: #80CBC4; }   /* teal         */
+.console-line--system    { color: #888; }
+.console-line--encounter { color: #C5E1A5; }
+.console-line--tick      { color: #546E7A; }
+.console-line--info      { color: #80CBC4; }
 
 .console-cursor {
   color: #aaa;
   animation: blink 0.8s step-start infinite;
 }
 
-@keyframes blink {
-  50% { opacity: 0; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* =====================================================================
+   BOTTOM PANEL  — mobile unified panel (Console + Inspector tabs)
+   ===================================================================== */
+.bottom-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #0a0a0a;
+  border-top: 1px solid #333;
+  overflow: hidden;
+  /* height set via inline style by BottomPanel component */
+}
+
+/* Handle bar — draggable strip at the very top of the panel */
+.bp-handle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.6rem;
+  height: 36px;
+  flex-shrink: 0;
+  cursor: ns-resize;
+  user-select: none;
+  touch-action: none;
+  background-color: #111;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.bp-grip {
+  color: #444;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+/* Collapsed state: 1-line summary after the grip */
+.bp-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', monospace;
+  font-size: 0.78rem;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.bp-summary__item {
+  color: #bbb;
+  white-space: nowrap;
+}
+
+.bp-summary__sep {
+  color: #444;
+  flex-shrink: 0;
+}
+
+/* Tab bar */
+.bp-tabs {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.bp-tab {
+  background: none;
+  border: 1px solid #333;
+  color: #666;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', monospace;
+  transition: background-color 80ms, color 80ms;
+  touch-action: manipulation;
+}
+
+.bp-tab:hover {
+  background-color: #1e1e1e;
+  color: #aaa;
+}
+
+.bp-tab--active {
+  border-color: #556;
+  color: #ccc;
+  background-color: #1a1a2a;
+}
+
+/* Content area below the handle — fills remaining panel height */
+.bp-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Inspector inside BottomPanel: scrollable */
+.bp-inspector-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.3rem 0.1rem;
+}
+
+.bp-inspector-wrap .inspector {
+  border: none;
+  background: transparent;
+  min-width: 0;
 }
 
 /* =====================================================================
-   MOBILE LAYOUT  ≤ 900px
-   Stack vertically: toolbar → grid (fills space) → inspector (strip) → d-pad
+   DESKTOP  (≥ 901px) — keep original two-column layout
+   ===================================================================== */
+@media (min-width: 901px) {
+  /* Bottom panel is a mobile-only element */
+  .bottom-panel { display: none; }
+
+  /* Overlay D-pad: smaller on desktop, slightly less opaque so it's clear it's secondary */
+  .touchpad-overlay {
+    bottom: 8px;
+    right: 8px;
+    opacity: 0.7;
+  }
+}
+
+/* =====================================================================
+   MOBILE  (≤ 900px)
+   Map fills available space; Inspector + desktop console hidden;
+   BottomPanel handles both info panels.
    ===================================================================== */
 @media (max-width: 900px) {
   .app {
     padding: 0.4rem 0.5rem;
-    gap: 0.35rem;
+    gap: 0.3rem;
   }
 
-  /* Stack everything vertically */
   .main {
     flex-direction: column;
     align-items: stretch;
     justify-content: flex-start;
-    gap: 0.35rem;
+    gap: 0;
+    flex: 1;
+    min-height: 0;
   }
 
-  /* Grid column fills all remaining vertical space */
-  .grid-col {
+  /* Map area fills all remaining space above the bottom panel */
+  .map-area {
     flex: 1;
     min-height: 0;
     width: 100%;
-    gap: 0.35rem;
+    align-items: stretch;
   }
 
-  /* Grid wrapper fills the grid column (less D-pad height) */
+  /* Grid wrap fills map area */
   .grid-wrap {
+    width: 100%;
+    height: 100%;
     flex: 1;
     min-height: 0;
-    width: 100%;
-    align-items: center;
   }
 
-  /* Remove border/padding so ResizeObserver gets the full usable area */
+  /* Hide desktop-only elements */
+  .inspector-desktop-wrap { display: none; }
+  .console-log.console-desktop { display: none; }
+
+  /* Compact grid border */
   .grid-view {
     padding: 0.2rem;
     border-left: none;
     border-right: none;
   }
 
-  /* Inspector becomes a full-width strip at the bottom of .main */
-  .inspector {
-    min-width: 0;
-    width: 100%;
-    flex-shrink: 0;
-  }
-
-  /* Compact D-pad with smaller buttons to save vertical space */
+  /* Smaller D-pad buttons on mobile */
   .dpad-btn {
     width: 44px;
     height: 44px;
     font-size: 1.1rem;
   }
 
-  /* Toolbar: compress seed input */
+  /* Compress seed input */
   input[type='number'] {
     width: 8em;
-  }
-
-  /* Console: shorter on mobile to save vertical space */
-  .console-log {
-    height: 4rem;
-    font-size: 0.72rem;
   }
 }

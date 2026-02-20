@@ -3,25 +3,24 @@ import { generateOverworld, serializeOverworld } from './world/overworld';
 import type { Overworld } from './world/types';
 import { spawnEntities, tickEntities } from './world/entities';
 import type { Entity } from './world/entities';
-import { checkProximity, getSystemMessage } from './world/simulation';
-import type { SimEvent } from './world/simulation';
+import { updateProximity, getSystemMessage } from './world/simulation';
+import type { SimEvent, NearStateMap } from './world/simulation';
 import { GridView } from './ui/GridView';
 import { Inspector } from './ui/Inspector';
 import { TouchPad } from './ui/TouchPad';
 import { ConsoleLog } from './ui/ConsoleLog';
+import { BottomPanel } from './ui/BottomPanel';
 import './App.css';
 
 const WORLD_WIDTH  = 80;
 const WORLD_HEIGHT = 40;
-const TICK_INTERVAL_MS  = 1000;  // 1 s per tick
-const SYSTEM_MSG_EVERY  = 8;     // system message every N ticks
-const PROXIMITY_RADIUS  = 2;     // Chebyshev distance for encounters
+const TICK_INTERVAL_MS = 1000;
+const SYSTEM_MSG_EVERY = 8;   // ambient message every N ticks
 
 function buildWorld(seed: number): Overworld {
   return generateOverworld(seed, WORLD_WIDTH, WORLD_HEIGHT);
 }
 
-/** Simple deterministic hash of a string for console verification. */
 function simpleHash(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -35,28 +34,30 @@ function simpleHash(s: string): number {
 const INITIAL_SEED = 12345;
 
 export default function App() {
-  const [seed, setSeed]         = useState<number>(INITIAL_SEED);
+  const [seed, setSeed]           = useState<number>(INITIAL_SEED);
   const [inputSeed, setInputSeed] = useState<string>(String(INITIAL_SEED));
-  const [world, setWorld]       = useState<Overworld>(() => buildWorld(INITIAL_SEED));
-  const [cursorX, setCursorX]   = useState(0);
-  const [cursorY, setCursorY]   = useState(0);
-  const [entities, setEntities] = useState<Entity[]>(() =>
+  const [world, setWorld]         = useState<Overworld>(() => buildWorld(INITIAL_SEED));
+  const [cursorX, setCursorX]     = useState(0);
+  const [cursorY, setCursorY]     = useState(0);
+  const [entities, setEntities]   = useState<Entity[]>(() =>
     spawnEntities(INITIAL_SEED, buildWorld(INITIAL_SEED)),
   );
-  const [tick, setTick]         = useState(0);
-  const [logs, setLogs]         = useState<SimEvent[]>([]);
+  const [tick, setTick]   = useState(0);
+  const [logs, setLogs]   = useState<SimEvent[]>([]);
 
-  const logIdRef    = useRef(0);
-  const cursorRef   = useRef({ x: 0, y: 0 });
-  const entitiesRef = useRef<Entity[]>(entities);
-  const seedRef     = useRef(seed);
+  const logIdRef      = useRef(0);
+  const seedRef       = useRef(seed);
+  const cursorRef     = useRef({ x: 0, y: 0 });
+  const entitiesRef   = useRef<Entity[]>(entities);
+  // NearState is mutated in-place by updateProximity — a ref avoids re-renders.
+  const nearStateRef  = useRef<NearStateMap>(new Map());
 
-  // Keep refs in sync.
-  useEffect(() => { entitiesRef.current = entities; }, [entities]);
+  // Keep refs in sync with state.
   useEffect(() => { seedRef.current = seed; }, [seed]);
   useEffect(() => { cursorRef.current = { x: cursorX, y: cursorY }; }, [cursorX, cursorY]);
+  useEffect(() => { entitiesRef.current = entities; }, [entities]);
 
-  /** Append one log entry. */
+  /** Append at most one log entry per call. */
   const addLog = useCallback((type: SimEvent['type'], text: string) => {
     const id = ++logIdRef.current;
     setLogs((prev) => {
@@ -65,7 +66,7 @@ export default function App() {
     });
   }, []);
 
-  /** Regenerate the world with a given seed. Resets cursor + entities. */
+  // ---- Regenerate world --------------------------------------------------
   const regenerate = useCallback((newSeed: number) => {
     const w = buildWorld(newSeed);
     const ents = spawnEntities(newSeed, w);
@@ -77,7 +78,7 @@ export default function App() {
     setTick(0);
     setLogs([]);
     logIdRef.current = 0;
-    // Console hash for determinism verification
+    nearStateRef.current = new Map();
     const hash = simpleHash(serializeOverworld(w));
     console.log(`[World] seed=${newSeed}  hash=0x${hash.toString(16).padStart(8, '0')}`);
     addLog('system', `세계가 생성되었습니다. (시드: ${newSeed})`);
@@ -102,7 +103,7 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // ---- Entity tick + proximity check on tick -----------------------------
+  // ---- Entity tick + proximity check on each tick ------------------------
   useEffect(() => {
     if (tick === 0) return;
 
@@ -110,15 +111,14 @@ export default function App() {
       const next = tickEntities(prev, seedRef.current, tick, world);
       entitiesRef.current = next;
 
-      // Check if any entity is now near the cursor.
+      // updateProximity mutates nearStateRef.current in-place.
       const { x, y } = cursorRef.current;
-      const msg = checkProximity(x, y, next, PROXIMITY_RADIUS, seedRef.current, tick);
+      const msg = updateProximity(x, y, next, nearStateRef.current, tick, seedRef.current);
       if (msg) addLog('encounter', msg);
 
       return next;
     });
 
-    // System ambient message every N ticks.
     if (tick % SYSTEM_MSG_EVERY === 0) {
       addLog('tick', getSystemMessage(tick, seedRef.current));
     }
@@ -128,15 +128,8 @@ export default function App() {
   // ---- Cursor movement ---------------------------------------------------
   const handleMoveCursor = useCallback(
     (dx: number, dy: number) => {
-      setCursorX((x) => {
-        const nx = Math.max(0, Math.min(world.width - 1, x + dx));
-        // Proximity check with new x and current y (approximate; full check below).
-        return nx;
-      });
-      setCursorY((y) => {
-        const ny = Math.max(0, Math.min(world.height - 1, y + dy));
-        return ny;
-      });
+      setCursorX((x) => Math.max(0, Math.min(world.width - 1, x + dx)));
+      setCursorY((y) => Math.max(0, Math.min(world.height - 1, y + dy)));
     },
     [world.width, world.height],
   );
@@ -149,19 +142,26 @@ export default function App() {
     [world.width, world.height],
   );
 
-  // Check proximity whenever cursor actually changes.
-  const prevCursorRef = useRef({ x: cursorX, y: cursorY });
+  // Check proximity whenever cursor changes (uses mutation-in-place nearStateRef).
+  const prevCursorRef = useRef({ x: 0, y: 0 });
   useEffect(() => {
     const prev = prevCursorRef.current;
     if (prev.x === cursorX && prev.y === cursorY) return;
     prevCursorRef.current = { x: cursorX, y: cursorY };
 
-    const msg = checkProximity(cursorX, cursorY, entitiesRef.current, PROXIMITY_RADIUS, seed, tick);
+    const msg = updateProximity(
+      cursorX, cursorY,
+      entitiesRef.current,
+      nearStateRef.current,
+      tick,
+      seed,
+    );
     if (msg) addLog('encounter', msg);
-  }, [cursorX, cursorY, seed, tick, addLog]);
+  }, [cursorX, cursorY, tick, seed, addLog]);
 
   return (
     <div className="app">
+      {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="toolbar">
         <label htmlFor="seed-input">Seed</label>
         <input
@@ -174,8 +174,11 @@ export default function App() {
         <button onClick={handleGenerate}>Generate</button>
         <button onClick={handleRandom}>Random</button>
       </div>
+
+      {/* ── Main content ─────────────────────────────────────────────────── */}
       <div className="main">
-        <div className="grid-col">
+        {/* Map area: grid + D-pad overlay */}
+        <div className="map-area">
           <GridView
             world={world}
             cursorX={cursorX}
@@ -184,11 +187,29 @@ export default function App() {
             onMoveCursor={handleMoveCursor}
             onSetCursor={handleSetCursor}
           />
-          <TouchPad onMoveCursor={handleMoveCursor} />
+          {/* D-pad overlay — absolute positioned inside .map-area */}
+          <div className="touchpad-overlay">
+            <TouchPad onMoveCursor={handleMoveCursor} />
+          </div>
         </div>
-        <Inspector world={world} seed={seed} cursorX={cursorX} cursorY={cursorY} />
+
+        {/* Inspector — hidden on mobile via CSS */}
+        <div className="inspector-desktop-wrap">
+          <Inspector world={world} seed={seed} cursorX={cursorX} cursorY={cursorY} />
+        </div>
       </div>
-      <ConsoleLog events={logs} />
+
+      {/* Console log — hidden on mobile via CSS */}
+      <ConsoleLog events={logs} className="console-desktop" />
+
+      {/* Bottom panel — hidden on desktop via CSS, shown on mobile only */}
+      <BottomPanel
+        world={world}
+        seed={seed}
+        cursorX={cursorX}
+        cursorY={cursorY}
+        events={logs}
+      />
     </div>
   );
 }

@@ -7,6 +7,8 @@ type Props = {
   seed: number;
   cursorX: number;
   cursorY: number;
+  /** When true, always shows the expanded view and hides the collapse toggle. */
+  noCollapse?: boolean;
 };
 
 /** Legend entries: [cssClass, glyph, label] */
@@ -20,25 +22,29 @@ const LEGEND: [string, string, string][] = [
   ['tile-player',         '@', 'cursor'],
 ];
 
-export function Inspector({ world, seed, cursorX, cursorY }: Props) {
-  const [collapsed, setCollapsed] = useState(true);
+export function Inspector({ world, seed, cursorX, cursorY, noCollapse }: Props) {
+  const [collapsed, setCollapsed] = useState(!noCollapse);
   const cell: OverworldCell = world.cells[cursorY * world.width + cursorX];
   const biomeClass = BIOME_CLASS[cell.biome] ?? '';
 
+  const effectivelyCollapsed = noCollapse ? false : collapsed;
+
   return (
-    <div className={`inspector${collapsed ? ' inspector--collapsed' : ''}`}>
+    <div className={`inspector${effectivelyCollapsed ? ' inspector--collapsed' : ''}`}>
       <div className="inspector-header">
         <span className="inspector-title">Inspector</span>
-        <button
-          className="inspector-toggle"
-          onClick={() => setCollapsed((v) => !v)}
-          aria-label={collapsed ? 'Expand inspector' : 'Collapse inspector'}
-        >
-          {collapsed ? '▼' : '▲'}
-        </button>
+        {!noCollapse && (
+          <button
+            className="inspector-toggle"
+            onClick={() => setCollapsed((v) => !v)}
+            aria-label={collapsed ? 'Expand inspector' : 'Collapse inspector'}
+          >
+            {collapsed ? '▼' : '▲'}
+          </button>
+        )}
       </div>
 
-      {collapsed ? (
+      {effectivelyCollapsed ? (
         /* Compact one-line summary */
         <div className="inspector-compact">
           <span className="ic-item">seed <b>{seed}</b></span>
