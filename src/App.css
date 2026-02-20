@@ -28,6 +28,14 @@
   justify-content: center;
 }
 
+/* ---- Grid column (grid + touchpad stacked) ---- */
+.grid-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 /* ---- Grid ---- */
 .grid-view {
   font-family: 'Courier New', Courier, monospace;
@@ -41,10 +49,72 @@
   cursor: default;
   white-space: pre;
   user-select: none;
+  touch-action: none; /* prevent browser scroll/zoom on swipe */
 }
 
 .grid-view:focus {
   border-color: #555;
+}
+
+/* Hidden single-char span used to measure cell dimensions for tap-to-jump. */
+.char-measure {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre;
+}
+
+/* ---- TouchPad (D-pad) ---- */
+.touchpad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.touchpad-row {
+  display: flex;
+  gap: 4px;
+}
+
+.dpad-btn {
+  width: 52px;
+  height: 52px;
+  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1e1e1e;
+  border: 1px solid #444;
+  color: #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+  transition: background-color 80ms, border-color 80ms;
+  /* Ensure minimum touch target */
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.dpad-btn:active,
+.dpad-btn:hover {
+  background-color: #2e2e2e;
+  border-color: #777;
+}
+
+.dpad-select {
+  font-size: 1rem;
+  color: #888;
+}
+
+.dpad-select--flash {
+  background-color: #3a3a1a;
+  border-color: #aaaa44;
+  color: #eedd88;
 }
 
 /* ---- Inspector ---- */

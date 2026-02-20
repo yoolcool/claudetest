@@ -3,6 +3,7 @@ import { generateOverworld, serializeOverworld } from './world/overworld';
 import type { Overworld } from './world/types';
 import { GridView } from './ui/GridView';
 import { Inspector } from './ui/Inspector';
+import { TouchPad } from './ui/TouchPad';
 import './App.css';
 
 const WORLD_WIDTH = 80;
@@ -65,6 +66,14 @@ export default function App() {
     [world.width, world.height],
   );
 
+  const handleSetCursor = useCallback(
+    (x: number, y: number) => {
+      setCursorX(Math.max(0, Math.min(world.width - 1, x)));
+      setCursorY(Math.max(0, Math.min(world.height - 1, y)));
+    },
+    [world.width, world.height],
+  );
+
   return (
     <div className="app">
       <div className="toolbar">
@@ -80,12 +89,16 @@ export default function App() {
         <button onClick={handleRandom}>Random</button>
       </div>
       <div className="main">
-        <GridView
-          world={world}
-          cursorX={cursorX}
-          cursorY={cursorY}
-          onMoveCursor={handleMoveCursor}
-        />
+        <div className="grid-col">
+          <GridView
+            world={world}
+            cursorX={cursorX}
+            cursorY={cursorY}
+            onMoveCursor={handleMoveCursor}
+            onSetCursor={handleSetCursor}
+          />
+          <TouchPad onMoveCursor={handleMoveCursor} />
+        </div>
         <Inspector world={world} seed={seed} cursorX={cursorX} cursorY={cursorY} />
       </div>
     </div>
