@@ -14,33 +14,73 @@ const MAX_FONT_SIZE = 13.6;
 /** Line-height multiplier — matches CSS line-height: 1.25. */
 const LINE_HEIGHT = 1.25;
 
-/**
- * Pre-computed glyph + CSS class for a single grid cell.
- * The parent (App) computes these from either Overworld or Zone data,
- * keeping GridView decoupled from world/zone types.
- */
-export type GridCell = { glyph: string; className: string };
+export type GridCursor = { x: number; y: number };
 
-type Props = {
-  gridWidth: number;
-  gridHeight: number;
-  /** Flat row-major array (index = y * gridWidth + x). Cursor overlaid on top. */
-  cells: GridCell[];
-  cursorX: number;
-  cursorY: number;
-  onMoveCursor: (dx: number, dy: number) => void;
-  onSetCursor: (x: number, y: number) => void;
+export type GridViewProps = {
+  width: number;
+  height: number;
+
+  /** Returns the glyph (single char) for cell (x, y). */
+  glyphAt: (x: number, y: number) => string;
+
+  /** Returns the CSS class for cell (x, y). */
+  classAt?: (x: number, y: number) => string | undefined;
+
+  /** Cursor position — rendered as '@' with tile-player class. */
+  cursor?: GridCursor;
+
+  /** Highlight position — adds tile-highlight class (stacks with classAt). */
+  highlight?: GridCursor;
+
+  /** Called when a cell is tapped (pointer down + up without significant drag). */
+  onCellTap?: (x: number, y: number) => void;
+
+  /** Called for keyboard arrow keys and swipe gestures. */
+  onMoveCursor?: (dx: number, dy: number) => void;
+
+  /** Optional font-size scale multiplier (default 1). */
+  scale?: number;
 };
 
+/**
+ * Returns the glyph to render for (x, y), with cursor overlay.
+ * Extracted so overlay logic lives in one place for future layers.
+ */
+function renderGlyph(
+  x: number, y: number,
+  glyphAt: (x: number, y: number) => string,
+  cursor?: GridCursor,
+): string {
+  if (cursor && cursor.x === x && cursor.y === y) return '@';
+  return glyphAt(x, y);
+}
+
+/** Returns the CSS class string for (x, y). */
+function cellClass(
+  x: number, y: number,
+  classAt: ((x: number, y: number) => string | undefined) | undefined,
+  cursor?: GridCursor,
+  highlight?: GridCursor,
+): string {
+  if (cursor && cursor.x === x && cursor.y === y) return 'tile-player';
+  const base = classAt?.(x, y) ?? '';
+  if (highlight && highlight.x === x && highlight.y === y) {
+    return base ? `${base} tile-highlight` : 'tile-highlight';
+  }
+  return base;
+}
+
 export function GridView({
-  gridWidth, gridHeight, cells,
-  cursorX, cursorY,
-  onMoveCursor, onSetCursor,
-}: Props) {
+  width, height,
+  glyphAt, classAt,
+  cursor, highlight,
+  onCellTap, onMoveCursor,
+  scale = 1,
+}: GridViewProps) {
   const wrapRef      = useRef<HTMLDivElement>(null);
   const preRef       = useRef<HTMLPreElement>(null);
-  const charRef      = useRef<HTMLSpanElement>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
+  const pointerCell  = useRef<{ x: number; y: number } | null>(null);
 
   const [fontSize, setFontSize] = useState(MAX_FONT_SIZE);
 
@@ -49,24 +89,25 @@ export function GridView({
     const el = wrapRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      if (width <= 0 || height <= 0) return;
-      const fsByW = width  / (gridWidth  * CHAR_ASPECT);
-      const fsByH = height / (gridHeight * LINE_HEIGHT);
-      setFontSize(Math.max(1, Math.min(fsByW, fsByH, MAX_FONT_SIZE)));
+      const { width: w, height: h } = entries[0].contentRect;
+      if (w <= 0 || h <= 0) return;
+      const fsByW = w / (width  * CHAR_ASPECT);
+      const fsByH = h / (height * LINE_HEIGHT);
+      setFontSize(Math.max(1, Math.min(fsByW, fsByH, MAX_FONT_SIZE * scale)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [gridWidth, gridHeight]);
+  }, [width, height, scale]);
 
   // ---- Keyboard -----------------------------------------------------------
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if (!onMoveCursor) return;
       switch (e.key) {
-        case 'ArrowUp':   case 'w': case 'W': e.preventDefault(); onMoveCursor( 0, -1); break;
-        case 'ArrowDown': case 's': case 'S': e.preventDefault(); onMoveCursor( 0,  1); break;
-        case 'ArrowLeft': case 'a': case 'A': e.preventDefault(); onMoveCursor(-1,  0); break;
-        case 'ArrowRight':case 'd': case 'D': e.preventDefault(); onMoveCursor( 1,  0); break;
+        case 'ArrowUp':    case 'w': case 'W': e.preventDefault(); onMoveCursor( 0, -1); break;
+        case 'ArrowDown':  case 's': case 'S': e.preventDefault(); onMoveCursor( 0,  1); break;
+        case 'ArrowLeft':  case 'a': case 'A': e.preventDefault(); onMoveCursor(-1,  0); break;
+        case 'ArrowRight': case 'd': case 'D': e.preventDefault(); onMoveCursor( 1,  0); break;
       }
     },
     [onMoveCursor],
@@ -77,10 +118,20 @@ export function GridView({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // ---- Pointer events (swipe + tap-to-jump) --------------------------------
+  // ---- Pointer events (swipe + per-cell tap) ------------------------------
+  // We read the cell from data-cx/data-cy on the span the pointer lands on.
+  // This avoids creating per-cell closures and works with pointer capture.
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLPreElement>) => {
     pointerStart.current = { x: e.clientX, y: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
+
+    // Record which cell the pointer started on (via data attributes on the span).
+    const target = e.target as HTMLElement;
+    const cx = target.dataset.cx;
+    const cy = target.dataset.cy;
+    pointerCell.current = cx !== undefined && cy !== undefined
+      ? { x: parseInt(cx, 10), y: parseInt(cy, 10) }
+      : null;
   }, []);
 
   const handlePointerUp = useCallback(
@@ -89,45 +140,43 @@ export function GridView({
       const dx = e.clientX - pointerStart.current.x;
       const dy = e.clientY - pointerStart.current.y;
       pointerStart.current = null;
+      const cell = pointerCell.current;
+      pointerCell.current = null;
 
       const absDx = Math.abs(dx);
       const absDy = Math.abs(dy);
 
       if (absDx < SWIPE_THRESHOLD && absDy < SWIPE_THRESHOLD) {
-        // Tap: jump cursor using measured char dimensions.
-        if (!preRef.current || !charRef.current) return;
-        const charW = charRef.current.offsetWidth;
-        const charH = charRef.current.offsetHeight;
-        if (charW <= 0 || charH <= 0) return;
-        const rect  = preRef.current.getBoundingClientRect();
-        const style = window.getComputedStyle(preRef.current);
-        const relX  = e.clientX - rect.left - parseFloat(style.paddingLeft);
-        const relY  = e.clientY - rect.top  - parseFloat(style.paddingTop);
-        onSetCursor(Math.floor(relX / charW), Math.floor(relY / charH));
+        // Tap — call onCellTap with the cell the pointer started on.
+        if (cell && onCellTap) onCellTap(cell.x, cell.y);
       } else {
-        // Swipe: move 1 step in dominant direction.
-        if (absDx > absDy) onMoveCursor(dx > 0 ? 1 : -1, 0);
-        else                onMoveCursor(0, dy > 0 ? 1 : -1);
+        // Swipe — move one step in the dominant direction.
+        if (onMoveCursor) {
+          if (absDx > absDy) onMoveCursor(dx > 0 ? 1 : -1, 0);
+          else                onMoveCursor(0, dy > 0 ? 1 : -1);
+        }
       }
     },
-    [onMoveCursor, onSetCursor],
+    [onCellTap, onMoveCursor],
   );
 
-  const handlePointerCancel = useCallback(() => { pointerStart.current = null; }, []);
+  const handlePointerCancel = useCallback(() => {
+    pointerStart.current = null;
+    pointerCell.current  = null;
+  }, []);
 
-  // ---- Render: one <span> per cell ----------------------------------------
+  // ---- Render: one <span> per cell, data-cx/data-cy for tap detection -----
   const children: React.ReactNode[] = [];
-  for (let y = 0; y < gridHeight; y++) {
-    for (let x = 0; x < gridWidth; x++) {
-      const idx      = y * gridWidth + x;
-      const isCursor = x === cursorX && y === cursorY;
-      const base     = cells[idx] ?? { glyph: ' ', className: '' };
-      const { glyph, className } = isCursor
-        ? { glyph: '@', className: 'tile-player' }
-        : base;
-      children.push(<span key={idx} className={className}>{glyph}</span>);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx   = y * width + x;
+      const glyph = renderGlyph(x, y, glyphAt, cursor);
+      const cls   = cellClass(x, y, classAt, cursor, highlight);
+      children.push(
+        <span key={idx} className={cls} data-cx={x} data-cy={y}>{glyph}</span>,
+      );
     }
-    if (y < gridHeight - 1) children.push('\n');
+    if (y < height - 1) children.push('\n');
   }
 
   const cellStyle: React.CSSProperties = {
@@ -137,8 +186,6 @@ export function GridView({
 
   return (
     <div ref={wrapRef} className="grid-wrap">
-      {/* Hidden span — actual rendered char width/height for tap-to-jump. */}
-      <span ref={charRef} className="char-measure" style={cellStyle}>M</span>
       <pre
         ref={preRef}
         className="grid-view"

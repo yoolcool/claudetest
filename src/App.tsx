@@ -10,7 +10,6 @@ import type { NarrationState } from './world/narration';
 import { generateZone } from './world/zone';
 import type { Zone } from './world/zoneTypes';
 import { GridView } from './ui/GridView';
-import type { GridCell } from './ui/GridView';
 import { Inspector } from './ui/Inspector';
 import { ZoneInspector } from './ui/ZoneInspector';
 import { ActionBar } from './ui/ActionBar';
@@ -201,7 +200,8 @@ export default function App() {
     [world.width, world.height],
   );
 
-  const handleSetCursor = useCallback(
+  // ---- Cell tap: moves cursor to the tapped cell (replaces onSetCursor) ---
+  const handleCellTap = useCallback(
     (x: number, y: number) => {
       if (modeRef.current === 'zone') {
         const z = zoneRef.current;
@@ -218,33 +218,39 @@ export default function App() {
     [world.width, world.height],
   );
 
-  // ---- Grid cell computation (overworld or zone) -------------------------
-  const gridCells = useMemo<GridCell[]>(() => {
-    if (mode === 'zone' && zone) {
-      return zone.tiles.map((tile) => ({
-        glyph:     tile.glyph,
-        className: `tile-zone tile-zone--${tile.kind}`,
-      }));
-    }
-    // Overworld: biome tiles + entity overlays.
-    const entityAt = new Map<number, Entity>();
-    for (const e of entities) entityAt.set(e.y * world.width + e.x, e);
-    return world.cells.map((cell, idx) => {
-      const entity = entityAt.get(idx);
-      if (entity) return {
-        glyph:     ENTITY_GLYPH[entity.kind],
-        className: `tile-entity tile-entity--${entity.kind}`,
-      };
-      return {
-        glyph:     BIOME_CHAR[cell.biome] ?? '?',
-        className: BIOME_CLASS[cell.biome] ?? '',
-      };
-    });
-  }, [mode, zone, world, entities]);
+  // ---- Grid adapters: callback-based (glyphAt / classAt) ------------------
+  // Pre-compute entity lookup map so glyphAt is O(1) per cell.
+  const entityAt = useMemo(() => {
+    const map = new Map<number, Entity>();
+    for (const e of entities) map.set(e.y * world.width + e.x, e);
+    return map;
+  }, [entities, world.width]);
 
-  // Active cursor coordinates and grid dimensions depend on mode.
-  const activeCursorX   = mode === 'zone' ? zoneCursor.x : cursorX;
-  const activeCursorY   = mode === 'zone' ? zoneCursor.y : cursorY;
+  const glyphAt = useCallback((x: number, y: number): string => {
+    if (modeRef.current === 'zone') {
+      const z = zoneRef.current;
+      if (!z) return ' ';
+      return z.tiles[y * z.width + x]?.glyph ?? ' ';
+    }
+    const entity = entityAt.get(y * world.width + x);
+    if (entity) return ENTITY_GLYPH[entity.kind];
+    return BIOME_CHAR[world.cells[y * world.width + x]?.biome] ?? '?';
+  }, [entityAt, world]);
+
+  const classAt = useCallback((x: number, y: number): string | undefined => {
+    if (modeRef.current === 'zone') {
+      const z = zoneRef.current;
+      if (!z) return undefined;
+      const tile = z.tiles[y * z.width + x];
+      return tile ? `tile-zone tile-zone--${tile.kind}` : undefined;
+    }
+    const entity = entityAt.get(y * world.width + x);
+    if (entity) return `tile-entity tile-entity--${entity.kind}`;
+    return BIOME_CLASS[world.cells[y * world.width + x]?.biome] ?? undefined;
+  }, [entityAt, world]);
+
+  // Active cursor and grid dimensions depend on mode.
+  const activeCursor     = mode === 'zone' ? zoneCursor : { x: cursorX, y: cursorY };
   const activeGridWidth  = mode === 'zone' ? (zone?.width  ?? ZONE_W) : world.width;
   const activeGridHeight = mode === 'zone' ? (zone?.height ?? ZONE_H) : world.height;
 
@@ -317,13 +323,13 @@ export default function App() {
         {/* Map area: grid only — D-pad lives in the bottom panel on mobile */}
         <div className="map-area">
           <GridView
-            gridWidth={activeGridWidth}
-            gridHeight={activeGridHeight}
-            cells={gridCells}
-            cursorX={activeCursorX}
-            cursorY={activeCursorY}
+            width={activeGridWidth}
+            height={activeGridHeight}
+            glyphAt={glyphAt}
+            classAt={classAt}
+            cursor={activeCursor}
             onMoveCursor={handleMoveCursor}
-            onSetCursor={handleSetCursor}
+            onCellTap={handleCellTap}
           />
         </div>
 
