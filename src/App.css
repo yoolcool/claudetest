@@ -323,9 +323,10 @@
 }
 
 .console-line--system    { color: #888; }
-.console-line--encounter { color: #C5E1A5; }
-.console-line--tick      { color: #546E7A; }
-.console-line--info      { color: #80CBC4; }
+.console-line--encounter { color: #C5E1A5; }  /* soft green — NPC/animal */
+.console-line--tick      { color: #546E7A; }  /* muted blue-grey */
+.console-line--info      { color: #80CBC4; }  /* teal */
+.console-line--narration { color: #8ab4b0; }  /* muted teal — world narration */
 
 .console-cursor {
   color: #aaa;

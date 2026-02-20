@@ -3,8 +3,10 @@ import { generateOverworld, serializeOverworld } from './world/overworld';
 import type { Overworld } from './world/types';
 import { spawnEntities, tickEntities } from './world/entities';
 import type { Entity } from './world/entities';
-import { updateProximity, getSystemMessage } from './world/simulation';
+import { updateProximity } from './world/simulation';
 import type { SimEvent, NearStateMap } from './world/simulation';
+import { initNarration, maybeEmitNarration } from './world/narration';
+import type { NarrationState } from './world/narration';
 import { GridView } from './ui/GridView';
 import { Inspector } from './ui/Inspector';
 import { TouchPad } from './ui/TouchPad';
@@ -15,7 +17,6 @@ import './App.css';
 const WORLD_WIDTH  = 80;
 const WORLD_HEIGHT = 40;
 const TICK_INTERVAL_MS = 1000;
-const SYSTEM_MSG_EVERY = 8;   // ambient message every N ticks
 
 function buildWorld(seed: number): Overworld {
   return generateOverworld(seed, WORLD_WIDTH, WORLD_HEIGHT);
@@ -50,12 +51,17 @@ export default function App() {
   const cursorRef     = useRef({ x: 0, y: 0 });
   const entitiesRef   = useRef<Entity[]>(entities);
   // NearState is mutated in-place by updateProximity — a ref avoids re-renders.
-  const nearStateRef  = useRef<NearStateMap>(new Map());
+  const nearStateRef      = useRef<NearStateMap>(new Map());
+  const narrationStateRef = useRef<NarrationState>(initNarration(INITIAL_SEED));
+  // worldRef lets the cursor-move effect read the current world without being
+  // added to that effect's dependency array (world only changes on regenerate).
+  const worldRef = useRef(world);
 
   // Keep refs in sync with state.
   useEffect(() => { seedRef.current = seed; }, [seed]);
   useEffect(() => { cursorRef.current = { x: cursorX, y: cursorY }; }, [cursorX, cursorY]);
   useEffect(() => { entitiesRef.current = entities; }, [entities]);
+  useEffect(() => { worldRef.current = world; }, [world]);
 
   /** Append at most one log entry per call. */
   const addLog = useCallback((type: SimEvent['type'], text: string) => {
@@ -79,6 +85,7 @@ export default function App() {
     setLogs([]);
     logIdRef.current = 0;
     nearStateRef.current = new Map();
+    narrationStateRef.current = initNarration(newSeed);
     const hash = simpleHash(serializeOverworld(w));
     console.log(`[World] seed=${newSeed}  hash=0x${hash.toString(16).padStart(8, '0')}`);
     addLog('system', `세계가 생성되었습니다. (시드: ${newSeed})`);
@@ -118,10 +125,6 @@ export default function App() {
 
       return next;
     });
-
-    if (tick % SYSTEM_MSG_EVERY === 0) {
-      addLog('tick', getSystemMessage(tick, seedRef.current));
-    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, world]);
 
@@ -142,21 +145,34 @@ export default function App() {
     [world.width, world.height],
   );
 
-  // Check proximity whenever cursor changes (uses mutation-in-place nearStateRef).
+  // On cursor move: proximity check + narration (uses mutable refs; no re-render).
   const prevCursorRef = useRef({ x: 0, y: 0 });
   useEffect(() => {
     const prev = prevCursorRef.current;
     if (prev.x === cursorX && prev.y === cursorY) return;
     prevCursorRef.current = { x: cursorX, y: cursorY };
 
-    const msg = updateProximity(
+    // 1. Encounter message (entity proximity entry).
+    const encounterMsg = updateProximity(
       cursorX, cursorY,
       entitiesRef.current,
       nearStateRef.current,
       tick,
       seed,
     );
-    if (msg) addLog('encounter', msg);
+    if (encounterMsg) addLog('encounter', encounterMsg);
+
+    // 2. Narration — skipped when an encounter fired this move.
+    const biome = worldRef.current.cells[cursorY * worldRef.current.width + cursorX]?.biome ?? 'plains';
+    const { state: nextNarState, line } = maybeEmitNarration(
+      seed,
+      tick,
+      biome,
+      !!encounterMsg,
+      narrationStateRef.current,
+    );
+    narrationStateRef.current = nextNarState;
+    if (line) addLog('narration', line.text);
   }, [cursorX, cursorY, tick, seed, addLog]);
 
   return (

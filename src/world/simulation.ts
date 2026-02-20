@@ -1,6 +1,6 @@
 import type { EntityKind } from './entities';
 
-export type LogType = 'info' | 'encounter' | 'system' | 'tick';
+export type LogType = 'info' | 'encounter' | 'system' | 'tick' | 'narration';
 
 export type SimEvent = {
   id: number;
@@ -41,17 +41,6 @@ const ENCOUNTER_MESSAGES: Record<EntityKind, string[]> = {
   ],
 };
 
-/** System ambient messages shown at fixed tick intervals. */
-export const SYSTEM_MESSAGES: string[] = [
-  '바람이 숲 사이를 조용히 스쳐 지나갑니다.',
-  '멀리서 천둥소리가 희미하게 들립니다.',
-  '하늘에 별이 하나 둘 떠오르기 시작합니다.',
-  '서쪽 하늘이 노을빛으로 물들고 있습니다.',
-  '풀잎 위에 아침 이슬이 맺혀 있습니다.',
-  '어디선가 낙엽 밟히는 소리가 들립니다.',
-  '차가운 바람이 불어와 외투 깃을 세우게 합니다.',
-  '세상이 잠시 고요해집니다.',
-];
 
 /** Proximity radius (Chebyshev distance) to trigger encounter messages. */
 const NEAR_RADIUS = 2;
@@ -135,10 +124,3 @@ export function updateProximity(
   return chosen.msg;
 }
 
-/**
- * Pick a system ambient message for this tick.
- */
-export function getSystemMessage(tick: number, seed: number): string {
-  const idx = (tick * 17 + seed) % SYSTEM_MESSAGES.length;
-  return SYSTEM_MESSAGES[idx];
-}
