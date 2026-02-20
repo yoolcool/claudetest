@@ -9,7 +9,6 @@ import { initNarration, maybeEmitNarration } from './world/narration';
 import type { NarrationState } from './world/narration';
 import { GridView } from './ui/GridView';
 import { Inspector } from './ui/Inspector';
-import { TouchPad } from './ui/TouchPad';
 import { ConsoleLog } from './ui/ConsoleLog';
 import { BottomPanel } from './ui/BottomPanel';
 import './App.css';
@@ -110,21 +109,16 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // ---- Entity tick + proximity check on each tick ------------------------
+  // ---- Entity tick -------------------------------------------------------
+  // Proximity is NOT checked here — only cursor movement triggers encounter
+  // messages. Checking in both places was causing the wasNear flag to be set
+  // before the player moved, making enteredNear always false in the cursor
+  // effect (the root cause of the NPC-message bug).
   useEffect(() => {
     if (tick === 0) return;
-
-    setEntities((prev) => {
-      const next = tickEntities(prev, seedRef.current, tick, world);
-      entitiesRef.current = next;
-
-      // updateProximity mutates nearStateRef.current in-place.
-      const { x, y } = cursorRef.current;
-      const msg = updateProximity(x, y, next, nearStateRef.current, tick, seedRef.current);
-      if (msg) addLog('encounter', msg);
-
-      return next;
-    });
+    const next = tickEntities(entitiesRef.current, seedRef.current, tick, world);
+    entitiesRef.current = next;
+    setEntities(next);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, world]);
 
@@ -193,7 +187,7 @@ export default function App() {
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
       <div className="main">
-        {/* Map area: grid + D-pad overlay */}
+        {/* Map area: grid only — D-pad lives in the bottom panel on mobile */}
         <div className="map-area">
           <GridView
             world={world}
@@ -203,10 +197,6 @@ export default function App() {
             onMoveCursor={handleMoveCursor}
             onSetCursor={handleSetCursor}
           />
-          {/* D-pad overlay — absolute positioned inside .map-area */}
-          <div className="touchpad-overlay">
-            <TouchPad onMoveCursor={handleMoveCursor} />
-          </div>
         </div>
 
         {/* Inspector — hidden on mobile via CSS */}
@@ -218,13 +208,14 @@ export default function App() {
       {/* Console log — hidden on mobile via CSS */}
       <ConsoleLog events={logs} className="console-desktop" />
 
-      {/* Bottom panel — hidden on desktop via CSS, shown on mobile only */}
+      {/* Bottom panel — mobile only (hidden on desktop via CSS) */}
       <BottomPanel
         world={world}
         seed={seed}
         cursorX={cursorX}
         cursorY={cursorY}
         events={logs}
+        onMoveCursor={handleMoveCursor}
       />
     </div>
   );

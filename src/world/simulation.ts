@@ -42,6 +42,12 @@ const ENCOUNTER_MESSAGES: Record<EntityKind, string[]> = {
 };
 
 
+/**
+ * Set to true (or flip in browser console: `window.__debugProx=true`)
+ * to print a line per entity every time proximity is evaluated.
+ */
+export let DEBUG_PROXIMITY = false;
+
 /** Proximity radius (Chebyshev distance) to trigger encounter messages. */
 const NEAR_RADIUS = 2;
 
@@ -103,6 +109,17 @@ export function updateProximity(
 
     // Update wasNear regardless of whether we speak.
     nearState.set(e.id, { wasNear: isNearNow, lastSpokeAt: prev.lastSpokeAt });
+
+    if (DEBUG_PROXIMITY && isNearNow) {
+      const cooldownOk = tick - prev.lastSpokeAt >= COOLDOWN_TICKS;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[DEBUG] entity ${e.kind}-${e.id} dist=${dist}` +
+        ` enteredNear=${enteredNear} wasNear=${prev.wasNear}` +
+        ` cooldownOk=${cooldownOk}` +
+        ` (tick=${tick} lastSpokeAt=${prev.lastSpokeAt})`,
+      );
+    }
 
     if (enteredNear && tick - prev.lastSpokeAt >= COOLDOWN_TICKS) {
       const r = deterministicRand(seed, e.id, tick);
