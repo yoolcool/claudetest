@@ -1,15 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import type { Overworld } from '../world/types';
-
-/** ASCII glyph for each biome */
-const BIOME_CHAR: Record<string, string> = {
-  water:          '~',
-  rocky_mountain: '^',
-  alpine:         'A',
-  desert:         '.',
-  plains:         ',',
-  forest:         'T',
-};
+import { BIOME_CHAR, getTileClass } from './tileClasses';
 
 const SWIPE_THRESHOLD = 25;
 
@@ -49,7 +40,6 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       if (width <= 0 || height <= 0) return;
-      // Compute max font-size that keeps all cols and rows inside the wrapper.
       const fsByW = width / (world.width * CHAR_ASPECT);
       const fsByH = height / (world.height * LINE_HEIGHT);
       setFontSize(Math.max(1, Math.min(fsByW, fsByH, MAX_FONT_SIZE)));
@@ -139,22 +129,27 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
     pointerStart.current = null;
   }, []);
 
-  // ---- Render -------------------------------------------------------------
-  const rows: string[] = [];
+  // ---- Render: one <span> per cell with biome colour ----------------------
+  //
+  // Flat children array: spans for each cell, '\n' text nodes between rows.
+  // React diffs this efficiently — only the 2 cells that change on cursor move
+  // are updated in the DOM.
+  const children: React.ReactNode[] = [];
   for (let y = 0; y < world.height; y++) {
-    let row = '';
     for (let x = 0; x < world.width; x++) {
-      if (x === cursorX && y === cursorY) {
-        row += '@';
-      } else {
-        const cell = world.cells[y * world.width + x];
-        row += BIOME_CHAR[cell.biome] ?? '?';
-      }
+      const isCursor = x === cursorX && y === cursorY;
+      const cell = world.cells[y * world.width + x];
+      const glyph = isCursor ? '@' : (BIOME_CHAR[cell.biome] ?? '?');
+      children.push(
+        <span key={y * world.width + x} className={getTileClass(cell.biome, isCursor)}>
+          {glyph}
+        </span>,
+      );
     }
-    rows.push(row);
+    if (y < world.height - 1) children.push('\n');
   }
 
-  // Applied to both pre and the measurement span so tap coords are accurate.
+  // Applied to both <pre> and the measurement span so tap coords stay accurate.
   const cellStyle: React.CSSProperties = {
     fontSize: `${fontSize}px`,
     lineHeight: String(LINE_HEIGHT),
@@ -173,7 +168,7 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       >
-        {rows.join('\n')}
+        {children}
       </pre>
     </div>
   );

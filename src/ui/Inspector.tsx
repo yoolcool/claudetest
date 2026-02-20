@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Overworld, OverworldCell } from '../world/types';
+import { BIOME_CLASS } from './tileClasses';
 
 type Props = {
   world: Overworld;
@@ -8,10 +9,21 @@ type Props = {
   cursorY: number;
 };
 
+/** Legend entries: [cssClass, glyph, label] */
+const LEGEND: [string, string, string][] = [
+  ['tile-water',          '~', 'water'],
+  ['tile-rocky-mountain', '^', 'rocky mountain'],
+  ['tile-alpine',         'A', 'alpine'],
+  ['tile-desert',         '.', 'desert'],
+  ['tile-plains',         ',', 'plains'],
+  ['tile-forest',         'T', 'forest'],
+  ['tile-player',         '@', 'cursor'],
+];
+
 export function Inspector({ world, seed, cursorX, cursorY }: Props) {
-  // Default collapsed so mobile layout stays compact.
   const [collapsed, setCollapsed] = useState(true);
   const cell: OverworldCell = world.cells[cursorY * world.width + cursorX];
+  const biomeClass = BIOME_CLASS[cell.biome] ?? '';
 
   return (
     <div className={`inspector${collapsed ? ' inspector--collapsed' : ''}`}>
@@ -33,7 +45,8 @@ export function Inspector({ world, seed, cursorX, cursorY }: Props) {
           <span className="ic-sep">|</span>
           <span className="ic-item">({cursorX},{cursorY})</span>
           <span className="ic-sep">|</span>
-          <span className="ic-item">{cell.biome}</span>
+          {/* Biome name coloured to match the tile */}
+          <span className={`ic-item ${biomeClass}`}>{cell.biome}</span>
         </div>
       ) : (
         /* Full detail view */
@@ -43,7 +56,10 @@ export function Inspector({ world, seed, cursorX, cursorY }: Props) {
               <tr><th>Seed</th><td>{seed}</td></tr>
               <tr><th>X</th><td>{cursorX}</td></tr>
               <tr><th>Y</th><td>{cursorY}</td></tr>
-              <tr><th>Biome</th><td>{cell.biome}</td></tr>
+              <tr>
+                <th>Biome</th>
+                <td><span className={biomeClass}>{cell.biome}</span></td>
+              </tr>
               <tr><th>Height</th><td>{cell.height.toFixed(2)}</td></tr>
               <tr><th>Moisture</th><td>{cell.moisture.toFixed(2)}</td></tr>
             </tbody>
@@ -51,13 +67,12 @@ export function Inspector({ world, seed, cursorX, cursorY }: Props) {
           <div className="legend">
             <h3>Legend</h3>
             <ul>
-              <li><span className="glyph">~</span> water</li>
-              <li><span className="glyph">^</span> rocky mountain</li>
-              <li><span className="glyph">A</span> alpine</li>
-              <li><span className="glyph">.</span> desert</li>
-              <li><span className="glyph">,</span> plains</li>
-              <li><span className="glyph">T</span> forest</li>
-              <li><span className="glyph">@</span> cursor</li>
+              {LEGEND.map(([cls, glyph, label]) => (
+                <li key={label}>
+                  <span className={`glyph ${cls}`}>{glyph}</span>
+                  {label}
+                </li>
+              ))}
             </ul>
             <p className="hint">Move: arrow keys / WASD / D-pad</p>
           </div>

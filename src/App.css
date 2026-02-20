@@ -271,6 +271,25 @@
 }
 
 /* =====================================================================
+   TILE COLOURS  (dark-theme palette)
+   All biome spans inside <pre> get these colours.
+   The same classes are reused in the Inspector legend.
+   ===================================================================== */
+.tile-water          { color: #4FC3F7; }
+.tile-rocky-mountain { color: #B0BEC5; }
+.tile-alpine         { color: #E0F7FA; }
+.tile-desert         { color: #FBC02D; }
+.tile-plains         { color: #9CCC65; }
+.tile-forest         { color: #2E7D32; }
+
+/* Player cursor — bold red with a subtle background highlight */
+.tile-player {
+  color: #FF5252;
+  font-weight: bold;
+  background-color: rgba(255, 82, 82, 0.18);
+}
+
+/* =====================================================================
    MOBILE LAYOUT  ≤ 900px
    Stack vertically: toolbar → grid (fills space) → inspector (strip) → d-pad
    ===================================================================== */
