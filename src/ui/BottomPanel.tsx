@@ -1,9 +1,13 @@
 import { useState, useRef, useCallback } from 'react';
 import type { Overworld } from '../world/types';
+import type { Zone } from '../world/zoneTypes';
 import type { SimEvent } from '../world/simulation';
 import { ConsoleLog } from './ConsoleLog';
 import { Inspector } from './Inspector';
+import { ZoneInspector } from './ZoneInspector';
 import { TouchPad } from './TouchPad';
+import { ActionBar } from './ActionBar';
+import type { ViewMode } from './ActionBar';
 import { BIOME_CLASS } from './tileClasses';
 
 type Tab = 'console' | 'inspector';
@@ -41,9 +45,21 @@ type Props = {
   cursorY: number;
   events: SimEvent[];
   onMoveCursor: (dx: number, dy: number) => void;
+  // Zone mode
+  mode: ViewMode;
+  zone: Zone | null;
+  zoneCursorX: number;
+  zoneCursorY: number;
+  onEnterZone: () => void;
+  onExitZone:  () => void;
+  onDepthChange: (delta: number) => void;
 };
 
-export function BottomPanel({ world, seed, cursorX, cursorY, events, onMoveCursor }: Props) {
+export function BottomPanel({
+  world, seed, cursorX, cursorY, events, onMoveCursor,
+  mode, zone, zoneCursorX, zoneCursorY,
+  onEnterZone, onExitZone, onDepthChange,
+}: Props) {
   const [height, setHeight] = useState<number>(H_MINI);
   const [activeTab, setActiveTab] = useState<Tab>('console');
 
@@ -52,8 +68,9 @@ export function BottomPanel({ world, seed, cursorX, cursorY, events, onMoveCurso
 
   const isCollapsed = height <= H_COLLAPSED + 4;
 
-  const cell      = world.cells[cursorY * world.width + cursorX];
+  const cell       = world.cells[cursorY * world.width + cursorX];
   const biomeClass = BIOME_CLASS[cell.biome] ?? '';
+  const zoneDepth  = zone?.meta.origin.depth ?? null;
 
   // ---- Drag handle --------------------------------------------------------
   const onHandleDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -106,11 +123,21 @@ export function BottomPanel({ world, seed, cursorX, cursorY, events, onMoveCurso
 
         {isCollapsed ? (
           <span className="bp-summary">
-            <span className="bp-summary__item">시드 {seed}</span>
-            <span className="bp-summary__sep">|</span>
-            <span className="bp-summary__item">({cursorX},{cursorY})</span>
-            <span className="bp-summary__sep">|</span>
-            <span className={`bp-summary__item ${biomeClass}`}>{cell.biome}</span>
+            {mode === 'zone' && zone ? (
+              <>
+                <span className="bp-summary__item">Zone {zone.id}</span>
+                <span className="bp-summary__sep">|</span>
+                <span className="bp-summary__item">({zoneCursorX},{zoneCursorY})</span>
+              </>
+            ) : (
+              <>
+                <span className="bp-summary__item">시드 {seed}</span>
+                <span className="bp-summary__sep">|</span>
+                <span className="bp-summary__item">({cursorX},{cursorY})</span>
+                <span className="bp-summary__sep">|</span>
+                <span className={`bp-summary__item ${biomeClass}`}>{cell.biome}</span>
+              </>
+            )}
           </span>
         ) : (
           <div
@@ -130,6 +157,19 @@ export function BottomPanel({ world, seed, cursorX, cursorY, events, onMoveCurso
         )}
       </div>
 
+      {/* ── Action bar (Enter Zone / Back / Depth) ───────────────────────── */}
+      {!isCollapsed && (
+        <div className="bp-action" onPointerDown={stopProp} onClick={stopProp}>
+          <ActionBar
+            mode={mode}
+            zoneDepth={zoneDepth}
+            onEnterZone={onEnterZone}
+            onExitZone={onExitZone}
+            onDepthChange={onDepthChange}
+          />
+        </div>
+      )}
+
       {/* ── Content: two-column grid (left: info, right: D-pad) ──────────── */}
       {!isCollapsed && (
         <div className="bp-content">
@@ -139,13 +179,21 @@ export function BottomPanel({ world, seed, cursorX, cursorY, events, onMoveCurso
               <ConsoleLog events={events} />
             ) : (
               <div className="bp-inspector-wrap">
-                <Inspector
-                  world={world}
-                  seed={seed}
-                  cursorX={cursorX}
-                  cursorY={cursorY}
-                  noCollapse
-                />
+                {mode === 'zone' && zone ? (
+                  <ZoneInspector
+                    zone={zone}
+                    cursorX={zoneCursorX}
+                    cursorY={zoneCursorY}
+                  />
+                ) : (
+                  <Inspector
+                    world={world}
+                    seed={seed}
+                    cursorX={cursorX}
+                    cursorY={cursorY}
+                    noCollapse
+                  />
+                )}
               </div>
             )}
           </div>

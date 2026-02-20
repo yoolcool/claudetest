@@ -280,6 +280,102 @@
 .tile-entity--wanderer { color: #D7BDE2; }
 
 /* =====================================================================
+   ZONE TILE COLOURS
+   ===================================================================== */
+.tile-zone--sand          { color: #D4A76A; }
+.tile-zone--gravel        { color: #9E9E9E; }
+.tile-zone--dirt          { color: #A1887F; }
+.tile-zone--grass         { color: #7CB342; }
+.tile-zone--tall_grass    { color: #558B2F; }
+.tile-zone--rock          { color: #757575; }
+.tile-zone--cliff         { color: #B71C1C; font-weight: bold; }
+.tile-zone--shallow_water { color: #4FC3F7; }
+.tile-zone--mud           { color: #6D4C41; }
+.tile-zone--tree          { color: #2E7D32; font-weight: bold; }
+.tile-zone--reed          { color: #827717; }
+.tile-zone--snow          { color: #E1F5FE; }
+
+/* =====================================================================
+   MODE BADGE + ACTION BAR
+   ===================================================================== */
+.mode-badge {
+  font-size: 0.78rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 3px;
+  border: 1px solid #333;
+  color: #aaa;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.mode-badge--zone { border-color: #4a6; color: #8fce9a; background-color: #0f1f12; }
+
+.toolbar-sep {
+  width: 1px;
+  height: 20px;
+  background: #333;
+  flex-shrink: 0;
+  margin: 0 0.2rem;
+}
+
+.action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+  color: #ccc;
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 28px;
+  touch-action: manipulation;
+  transition: background-color 80ms, border-color 80ms;
+}
+.action-btn:hover:not(:disabled) { background-color: #2a2a2a; border-color: #666; }
+.action-btn:disabled { opacity: 0.38; cursor: default; }
+
+.action-btn--enter {
+  border-color: #4a8;
+  color: #8fce9a;
+  background-color: #0f1f16;
+}
+.action-btn--enter:hover { background-color: #162b1e; border-color: #6bc; }
+
+.action-btn--back {
+  border-color: #86a;
+  color: #c9a0dc;
+  background-color: #1a1020;
+}
+.action-btn--back:hover { background-color: #221530; border-color: #a8c; }
+
+.action-depth {
+  font-size: 0.76rem;
+  color: #777;
+  padding: 0 0.25rem;
+  white-space: nowrap;
+}
+
+/* Mobile action bar inside BottomPanel */
+.bp-action {
+  flex-shrink: 0;
+  padding: 3px 6px;
+  border-bottom: 1px solid #1e1e1e;
+  background-color: #0d0d0d;
+}
+
+.bp-action .action-btn {
+  min-height: 34px;
+  padding: 0.25rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+/* =====================================================================
    CONSOLE LOG  — fills its container height
    ===================================================================== */
 .console-log {

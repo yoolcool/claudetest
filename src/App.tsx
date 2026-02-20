@@ -1,16 +1,23 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { generateOverworld, serializeOverworld } from './world/overworld';
 import type { Overworld } from './world/types';
-import { spawnEntities, tickEntities } from './world/entities';
+import { spawnEntities, tickEntities, ENTITY_GLYPH } from './world/entities';
 import type { Entity } from './world/entities';
 import { updateProximity } from './world/simulation';
 import type { SimEvent, NearStateMap } from './world/simulation';
 import { initNarration, maybeEmitNarration } from './world/narration';
 import type { NarrationState } from './world/narration';
+import { generateZone } from './world/zone';
+import type { Zone } from './world/zoneTypes';
 import { GridView } from './ui/GridView';
+import type { GridCell } from './ui/GridView';
 import { Inspector } from './ui/Inspector';
+import { ZoneInspector } from './ui/ZoneInspector';
+import { ActionBar } from './ui/ActionBar';
+import type { ViewMode } from './ui/ActionBar';
 import { ConsoleLog } from './ui/ConsoleLog';
 import { BottomPanel } from './ui/BottomPanel';
+import { BIOME_CHAR, BIOME_CLASS } from './ui/tileClasses';
 import './App.css';
 
 const WORLD_WIDTH  = 80;
@@ -32,6 +39,9 @@ function simpleHash(s: string): number {
 }
 
 const INITIAL_SEED = 12345;
+/** Zone dimensions when entering from overworld. */
+const ZONE_W = 80;
+const ZONE_H = 25;
 
 export default function App() {
   const [seed, setSeed]           = useState<number>(INITIAL_SEED);
@@ -44,6 +54,14 @@ export default function App() {
   );
   const [tick, setTick]   = useState(0);
   const [logs, setLogs]   = useState<SimEvent[]>([]);
+
+  // ---- Zone state ---------------------------------------------------------
+  const [mode, setMode]         = useState<ViewMode>('overworld');
+  const [zone, setZone]         = useState<Zone | null>(null);
+  const [zoneCursor, setZoneCursor] = useState({ x: 0, y: 0 });
+  const [zoneOrigin, setZoneOrigin] = useState<{
+    ox: number; oy: number; depth: number;
+  } | null>(null);
 
   const logIdRef      = useRef(0);
   const seedRef       = useRef(seed);
@@ -103,6 +121,44 @@ export default function App() {
     regenerate(s);
   }, [regenerate]);
 
+  // ---- Zone actions -------------------------------------------------------
+  const enterZone = useCallback(() => {
+    const cell = worldRef.current.cells[cursorY * worldRef.current.width + cursorX];
+    const newZone = generateZone({
+      worldSeed: seedRef.current,
+      ox: cursorX, oy: cursorY, depth: 0,
+      cell, width: ZONE_W, height: ZONE_H,
+    });
+    setZone(newZone);
+    setZoneOrigin({ ox: cursorX, oy: cursorY, depth: 0 });
+    setZoneCursor({ x: Math.floor(ZONE_W / 2), y: Math.floor(ZONE_H / 2) });
+    setMode('zone');
+    addLog('system', `Zone 진입 (${cursorX},${cursorY} 깊이 0)`);
+  }, [cursorX, cursorY, addLog]);
+
+  const exitZone = useCallback(() => {
+    setMode('overworld');
+    setZone(null);
+    setZoneOrigin(null);
+    addLog('system', 'Overworld로 복귀');
+  }, [addLog]);
+
+  const changeDepth = useCallback((delta: number) => {
+    if (!zoneOrigin) return;
+    const newDepth = zoneOrigin.depth + delta;
+    if (newDepth < 0) return;
+    const cell = worldRef.current.cells[zoneOrigin.oy * worldRef.current.width + zoneOrigin.ox];
+    const newZone = generateZone({
+      worldSeed: seedRef.current,
+      ox: zoneOrigin.ox, oy: zoneOrigin.oy, depth: newDepth,
+      cell, width: ZONE_W, height: ZONE_H,
+    });
+    setZone(newZone);
+    setZoneOrigin({ ...zoneOrigin, depth: newDepth });
+    setZoneCursor({ x: Math.floor(ZONE_W / 2), y: Math.floor(ZONE_H / 2) });
+    addLog('system', `Depth → ${newDepth}`);
+  }, [zoneOrigin, addLog]);
+
   // ---- Tick timer --------------------------------------------------------
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), TICK_INTERVAL_MS);
@@ -122,26 +178,81 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, world]);
 
-  // ---- Cursor movement ---------------------------------------------------
+  // ---- Cursor movement (mode-aware) --------------------------------------
+  const modeRef = useRef(mode);
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+  const zoneRef = useRef(zone);
+  useEffect(() => { zoneRef.current = zone; }, [zone]);
+
   const handleMoveCursor = useCallback(
     (dx: number, dy: number) => {
-      setCursorX((x) => Math.max(0, Math.min(world.width - 1, x + dx)));
-      setCursorY((y) => Math.max(0, Math.min(world.height - 1, y + dy)));
+      if (modeRef.current === 'zone') {
+        const z = zoneRef.current;
+        if (!z) return;
+        setZoneCursor((c) => ({
+          x: Math.max(0, Math.min(z.width  - 1, c.x + dx)),
+          y: Math.max(0, Math.min(z.height - 1, c.y + dy)),
+        }));
+      } else {
+        setCursorX((x) => Math.max(0, Math.min(world.width  - 1, x + dx)));
+        setCursorY((y) => Math.max(0, Math.min(world.height - 1, y + dy)));
+      }
     },
     [world.width, world.height],
   );
 
   const handleSetCursor = useCallback(
     (x: number, y: number) => {
-      setCursorX(Math.max(0, Math.min(world.width - 1, x)));
-      setCursorY(Math.max(0, Math.min(world.height - 1, y)));
+      if (modeRef.current === 'zone') {
+        const z = zoneRef.current;
+        if (!z) return;
+        setZoneCursor({
+          x: Math.max(0, Math.min(z.width  - 1, x)),
+          y: Math.max(0, Math.min(z.height - 1, y)),
+        });
+      } else {
+        setCursorX(Math.max(0, Math.min(world.width  - 1, x)));
+        setCursorY(Math.max(0, Math.min(world.height - 1, y)));
+      }
     },
     [world.width, world.height],
   );
 
+  // ---- Grid cell computation (overworld or zone) -------------------------
+  const gridCells = useMemo<GridCell[]>(() => {
+    if (mode === 'zone' && zone) {
+      return zone.tiles.map((tile) => ({
+        glyph:     tile.glyph,
+        className: `tile-zone tile-zone--${tile.kind}`,
+      }));
+    }
+    // Overworld: biome tiles + entity overlays.
+    const entityAt = new Map<number, Entity>();
+    for (const e of entities) entityAt.set(e.y * world.width + e.x, e);
+    return world.cells.map((cell, idx) => {
+      const entity = entityAt.get(idx);
+      if (entity) return {
+        glyph:     ENTITY_GLYPH[entity.kind],
+        className: `tile-entity tile-entity--${entity.kind}`,
+      };
+      return {
+        glyph:     BIOME_CHAR[cell.biome] ?? '?',
+        className: BIOME_CLASS[cell.biome] ?? '',
+      };
+    });
+  }, [mode, zone, world, entities]);
+
+  // Active cursor coordinates and grid dimensions depend on mode.
+  const activeCursorX   = mode === 'zone' ? zoneCursor.x : cursorX;
+  const activeCursorY   = mode === 'zone' ? zoneCursor.y : cursorY;
+  const activeGridWidth  = mode === 'zone' ? (zone?.width  ?? ZONE_W) : world.width;
+  const activeGridHeight = mode === 'zone' ? (zone?.height ?? ZONE_H) : world.height;
+
   // On cursor move: proximity check + narration (uses mutable refs; no re-render).
   const prevCursorRef = useRef({ x: 0, y: 0 });
   useEffect(() => {
+    // Skip encounter/narration in zone mode — overworld cursor didn't move.
+    if (mode !== 'overworld') return;
     const prev = prevCursorRef.current;
     if (prev.x === cursorX && prev.y === cursorY) return;
     prevCursorRef.current = { x: cursorX, y: cursorY };
@@ -167,22 +278,38 @@ export default function App() {
     );
     narrationStateRef.current = nextNarState;
     if (line) addLog('narration', line.text);
-  }, [cursorX, cursorY, tick, seed, addLog]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursorX, cursorY, mode, tick, seed, addLog]);
 
   return (
     <div className="app">
       {/* ── Toolbar ──────────────────────────────────────────────────────── */}
       <div className="toolbar">
+        {/* Mode badge */}
+        <span className={`mode-badge mode-badge--${mode}`}>
+          {mode === 'overworld' ? '🌍 Overworld' : `🏔 Zone`}
+        </span>
+        {/* Seed controls — disabled in zone mode */}
         <label htmlFor="seed-input">Seed</label>
         <input
           id="seed-input"
           type="number"
           value={inputSeed}
+          disabled={mode === 'zone'}
           onChange={(e) => setInputSeed(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
         />
-        <button onClick={handleGenerate}>Generate</button>
-        <button onClick={handleRandom}>Random</button>
+        <button onClick={handleGenerate} disabled={mode === 'zone'}>Generate</button>
+        <button onClick={handleRandom}   disabled={mode === 'zone'}>Random</button>
+        {/* Action bar — desktop only (BottomPanel shows it on mobile) */}
+        <span className="toolbar-sep" />
+        <ActionBar
+          mode={mode}
+          zoneDepth={zoneOrigin?.depth ?? null}
+          onEnterZone={enterZone}
+          onExitZone={exitZone}
+          onDepthChange={changeDepth}
+        />
       </div>
 
       {/* ── Main content ─────────────────────────────────────────────────── */}
@@ -190,10 +317,11 @@ export default function App() {
         {/* Map area: grid only — D-pad lives in the bottom panel on mobile */}
         <div className="map-area">
           <GridView
-            world={world}
-            cursorX={cursorX}
-            cursorY={cursorY}
-            entities={entities}
+            gridWidth={activeGridWidth}
+            gridHeight={activeGridHeight}
+            cells={gridCells}
+            cursorX={activeCursorX}
+            cursorY={activeCursorY}
             onMoveCursor={handleMoveCursor}
             onSetCursor={handleSetCursor}
           />
@@ -201,7 +329,11 @@ export default function App() {
 
         {/* Inspector — hidden on mobile via CSS */}
         <div className="inspector-desktop-wrap">
-          <Inspector world={world} seed={seed} cursorX={cursorX} cursorY={cursorY} />
+          {mode === 'zone' && zone ? (
+            <ZoneInspector zone={zone} cursorX={zoneCursor.x} cursorY={zoneCursor.y} />
+          ) : (
+            <Inspector world={world} seed={seed} cursorX={cursorX} cursorY={cursorY} />
+          )}
         </div>
       </div>
 
@@ -216,6 +348,13 @@ export default function App() {
         cursorY={cursorY}
         events={logs}
         onMoveCursor={handleMoveCursor}
+        mode={mode}
+        zone={zone}
+        zoneCursorX={zoneCursor.x}
+        zoneCursorY={zoneCursor.y}
+        onEnterZone={enterZone}
+        onExitZone={exitZone}
+        onDepthChange={changeDepth}
       />
     </div>
   );

@@ -1,8 +1,4 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
-import type { Overworld } from '../world/types';
-import type { Entity } from '../world/entities';
-import { ENTITY_GLYPH } from '../world/entities';
-import { BIOME_CHAR, getTileClass } from './tileClasses';
 
 const SWIPE_THRESHOLD = 25;
 
@@ -18,20 +14,32 @@ const MAX_FONT_SIZE = 13.6;
 /** Line-height multiplier — matches CSS line-height: 1.25. */
 const LINE_HEIGHT = 1.25;
 
+/**
+ * Pre-computed glyph + CSS class for a single grid cell.
+ * The parent (App) computes these from either Overworld or Zone data,
+ * keeping GridView decoupled from world/zone types.
+ */
+export type GridCell = { glyph: string; className: string };
+
 type Props = {
-  world: Overworld;
+  gridWidth: number;
+  gridHeight: number;
+  /** Flat row-major array (index = y * gridWidth + x). Cursor overlaid on top. */
+  cells: GridCell[];
   cursorX: number;
   cursorY: number;
-  entities: Entity[];
   onMoveCursor: (dx: number, dy: number) => void;
   onSetCursor: (x: number, y: number) => void;
 };
 
-export function GridView({ world, cursorX, cursorY, entities, onMoveCursor, onSetCursor }: Props) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
-  // Invisible single-char span — measures actual rendered char dimensions.
-  const charRef = useRef<HTMLSpanElement>(null);
+export function GridView({
+  gridWidth, gridHeight, cells,
+  cursorX, cursorY,
+  onMoveCursor, onSetCursor,
+}: Props) {
+  const wrapRef      = useRef<HTMLDivElement>(null);
+  const preRef       = useRef<HTMLPreElement>(null);
+  const charRef      = useRef<HTMLSpanElement>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
 
   const [fontSize, setFontSize] = useState(MAX_FONT_SIZE);
@@ -43,42 +51,22 @@ export function GridView({ world, cursorX, cursorY, entities, onMoveCursor, onSe
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       if (width <= 0 || height <= 0) return;
-      const fsByW = width / (world.width * CHAR_ASPECT);
-      const fsByH = height / (world.height * LINE_HEIGHT);
+      const fsByW = width  / (gridWidth  * CHAR_ASPECT);
+      const fsByH = height / (gridHeight * LINE_HEIGHT);
       setFontSize(Math.max(1, Math.min(fsByW, fsByH, MAX_FONT_SIZE)));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [world.width, world.height]);
+  }, [gridWidth, gridHeight]);
 
   // ---- Keyboard -----------------------------------------------------------
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       switch (e.key) {
-        case 'ArrowUp':
-        case 'w':
-        case 'W':
-          e.preventDefault();
-          onMoveCursor(0, -1);
-          break;
-        case 'ArrowDown':
-        case 's':
-        case 'S':
-          e.preventDefault();
-          onMoveCursor(0, 1);
-          break;
-        case 'ArrowLeft':
-        case 'a':
-        case 'A':
-          e.preventDefault();
-          onMoveCursor(-1, 0);
-          break;
-        case 'ArrowRight':
-        case 'd':
-        case 'D':
-          e.preventDefault();
-          onMoveCursor(1, 0);
-          break;
+        case 'ArrowUp':   case 'w': case 'W': e.preventDefault(); onMoveCursor( 0, -1); break;
+        case 'ArrowDown': case 's': case 'S': e.preventDefault(); onMoveCursor( 0,  1); break;
+        case 'ArrowLeft': case 'a': case 'A': e.preventDefault(); onMoveCursor(-1,  0); break;
+        case 'ArrowRight':case 'd': case 'D': e.preventDefault(); onMoveCursor( 1,  0); break;
       }
     },
     [onMoveCursor],
@@ -106,74 +94,42 @@ export function GridView({ world, cursorX, cursorY, entities, onMoveCursor, onSe
       const absDy = Math.abs(dy);
 
       if (absDx < SWIPE_THRESHOLD && absDy < SWIPE_THRESHOLD) {
-        // Tap: jump cursor to tapped cell using measured char dimensions.
+        // Tap: jump cursor using measured char dimensions.
         if (!preRef.current || !charRef.current) return;
         const charW = charRef.current.offsetWidth;
         const charH = charRef.current.offsetHeight;
         if (charW <= 0 || charH <= 0) return;
-        const rect = preRef.current.getBoundingClientRect();
+        const rect  = preRef.current.getBoundingClientRect();
         const style = window.getComputedStyle(preRef.current);
-        const relX = e.clientX - rect.left - parseFloat(style.paddingLeft);
-        const relY = e.clientY - rect.top - parseFloat(style.paddingTop);
+        const relX  = e.clientX - rect.left - parseFloat(style.paddingLeft);
+        const relY  = e.clientY - rect.top  - parseFloat(style.paddingTop);
         onSetCursor(Math.floor(relX / charW), Math.floor(relY / charH));
       } else {
         // Swipe: move 1 step in dominant direction.
-        if (absDx > absDy) {
-          onMoveCursor(dx > 0 ? 1 : -1, 0);
-        } else {
-          onMoveCursor(0, dy > 0 ? 1 : -1);
-        }
+        if (absDx > absDy) onMoveCursor(dx > 0 ? 1 : -1, 0);
+        else                onMoveCursor(0, dy > 0 ? 1 : -1);
       }
     },
     [onMoveCursor, onSetCursor],
   );
 
-  const handlePointerCancel = useCallback(() => {
-    pointerStart.current = null;
-  }, []);
+  const handlePointerCancel = useCallback(() => { pointerStart.current = null; }, []);
 
-  // ---- Build entity lookup map -----------------------------------------------
-  const entityAt = new Map<number, Entity>();
-  for (const e of entities) {
-    entityAt.set(e.y * world.width + e.x, e);
-  }
-
-  // ---- Render: one <span> per cell with biome colour ----------------------
-  //
-  // Flat children array: spans for each cell, '\n' text nodes between rows.
-  // React diffs this efficiently — only the 2 cells that change on cursor move
-  // are updated in the DOM.
-  // Priority: cursor > entity > biome
+  // ---- Render: one <span> per cell ----------------------------------------
   const children: React.ReactNode[] = [];
-  for (let y = 0; y < world.height; y++) {
-    for (let x = 0; x < world.width; x++) {
+  for (let y = 0; y < gridHeight; y++) {
+    for (let x = 0; x < gridWidth; x++) {
+      const idx      = y * gridWidth + x;
       const isCursor = x === cursorX && y === cursorY;
-      const cell = world.cells[y * world.width + x];
-      const entity = entityAt.get(y * world.width + x);
-
-      let glyph: string;
-      let className: string;
-      if (isCursor) {
-        glyph = '@';
-        className = 'tile-player';
-      } else if (entity) {
-        glyph = ENTITY_GLYPH[entity.kind];
-        className = `tile-entity tile-entity--${entity.kind}`;
-      } else {
-        glyph = BIOME_CHAR[cell.biome] ?? '?';
-        className = getTileClass(cell.biome, false);
-      }
-
-      children.push(
-        <span key={y * world.width + x} className={className}>
-          {glyph}
-        </span>,
-      );
+      const base     = cells[idx] ?? { glyph: ' ', className: '' };
+      const { glyph, className } = isCursor
+        ? { glyph: '@', className: 'tile-player' }
+        : base;
+      children.push(<span key={idx} className={className}>{glyph}</span>);
     }
-    if (y < world.height - 1) children.push('\n');
+    if (y < gridHeight - 1) children.push('\n');
   }
 
-  // Applied to both <pre> and the measurement span so tap coords stay accurate.
   const cellStyle: React.CSSProperties = {
     fontSize: `${fontSize}px`,
     lineHeight: String(LINE_HEIGHT),
