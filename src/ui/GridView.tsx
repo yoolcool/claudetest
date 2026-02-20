@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import type { Overworld } from '../world/types';
 
 /** ASCII glyph for each biome */
@@ -10,8 +10,19 @@ const BIOME_CHAR: Record<string, string> = {
   plains: ',',
 };
 
-/** Minimum pointer travel to be treated as a swipe rather than a tap. */
 const SWIPE_THRESHOLD = 25;
+
+/**
+ * Courier New character width / font-size ratio (~0.601).
+ * Used by ResizeObserver to compute the largest font that still fits the grid.
+ */
+const CHAR_ASPECT = 0.601;
+
+/** Desktop default font-size in px (≈ 0.85rem). Font never exceeds this. */
+const MAX_FONT_SIZE = 13.6;
+
+/** Line-height multiplier — matches CSS line-height: 1.25. */
+const LINE_HEIGHT = 1.25;
 
 type Props = {
   world: Overworld;
@@ -22,12 +33,31 @@ type Props = {
 };
 
 export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }: Props) {
+  const wrapRef = useRef<HTMLDivElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
-  // Hidden single-char span used to measure actual character cell dimensions.
+  // Invisible single-char span — measures actual rendered char dimensions.
   const charRef = useRef<HTMLSpanElement>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
 
-  // ---- Keyboard --------------------------------------------------------
+  const [fontSize, setFontSize] = useState(MAX_FONT_SIZE);
+
+  // ---- Dynamic font-size: fit grid into wrapper via ResizeObserver --------
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      if (width <= 0 || height <= 0) return;
+      // Compute max font-size that keeps all cols and rows inside the wrapper.
+      const fsByW = width / (world.width * CHAR_ASPECT);
+      const fsByH = height / (world.height * LINE_HEIGHT);
+      setFontSize(Math.max(1, Math.min(fsByW, fsByH, MAX_FONT_SIZE)));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [world.width, world.height]);
+
+  // ---- Keyboard -----------------------------------------------------------
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       switch (e.key) {
@@ -65,12 +95,10 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
-  // ---- Pointer (touch + mouse) -----------------------------------------
-
+  // ---- Pointer events (swipe + tap-to-jump) --------------------------------
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLPreElement>) => {
     pointerStart.current = { x: e.clientX, y: e.clientY };
-    // Capture so pointerup fires even if pointer leaves the element
-    (e.currentTarget).setPointerCapture(e.pointerId);
+    e.currentTarget.setPointerCapture(e.pointerId);
   }, []);
 
   const handlePointerUp = useCallback(
@@ -84,22 +112,18 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
       const absDy = Math.abs(dy);
 
       if (absDx < SWIPE_THRESHOLD && absDy < SWIPE_THRESHOLD) {
-        // ---- Tap: jump cursor to the tapped cell ----
+        // Tap: jump cursor to tapped cell using measured char dimensions.
         if (!preRef.current || !charRef.current) return;
         const charW = charRef.current.offsetWidth;
         const charH = charRef.current.offsetHeight;
         if (charW <= 0 || charH <= 0) return;
-
         const rect = preRef.current.getBoundingClientRect();
         const style = window.getComputedStyle(preRef.current);
         const relX = e.clientX - rect.left - parseFloat(style.paddingLeft);
         const relY = e.clientY - rect.top - parseFloat(style.paddingTop);
-
-        const col = Math.floor(relX / charW);
-        const row = Math.floor(relY / charH);
-        onSetCursor(col, row);
+        onSetCursor(Math.floor(relX / charW), Math.floor(relY / charH));
       } else {
-        // ---- Swipe: move cursor 1 step ----
+        // Swipe: move 1 step in dominant direction.
         if (absDx > absDy) {
           onMoveCursor(dx > 0 ? 1 : -1, 0);
         } else {
@@ -114,8 +138,7 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
     pointerStart.current = null;
   }, []);
 
-  // ---- Render ----------------------------------------------------------
-
+  // ---- Render -------------------------------------------------------------
   const rows: string[] = [];
   for (let y = 0; y < world.height; y++) {
     let row = '';
@@ -130,13 +153,20 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
     rows.push(row);
   }
 
+  // Applied to both pre and the measurement span so tap coords are accurate.
+  const cellStyle: React.CSSProperties = {
+    fontSize: `${fontSize}px`,
+    lineHeight: String(LINE_HEIGHT),
+  };
+
   return (
-    <>
-      {/* Hidden span to measure a single character's rendered dimensions. */}
-      <span ref={charRef} className="char-measure">M</span>
+    <div ref={wrapRef} className="grid-wrap">
+      {/* Hidden span — actual rendered char width/height for tap-to-jump. */}
+      <span ref={charRef} className="char-measure" style={cellStyle}>M</span>
       <pre
         ref={preRef}
         className="grid-view"
+        style={cellStyle}
         tabIndex={0}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
@@ -144,6 +174,6 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
       >
         {rows.join('\n')}
       </pre>
-    </>
+    </div>
   );
 }

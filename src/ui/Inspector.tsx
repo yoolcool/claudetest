@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Overworld, OverworldCell } from '../world/types';
 
 type Props = {
@@ -8,51 +9,59 @@ type Props = {
 };
 
 export function Inspector({ world, seed, cursorX, cursorY }: Props) {
+  // Default collapsed so mobile layout stays compact.
+  const [collapsed, setCollapsed] = useState(true);
   const cell: OverworldCell = world.cells[cursorY * world.width + cursorX];
 
   return (
-    <div className="inspector">
-      <h2>Inspector</h2>
-      <table>
-        <tbody>
-          <tr>
-            <th>Seed</th>
-            <td>{seed}</td>
-          </tr>
-          <tr>
-            <th>X</th>
-            <td>{cursorX}</td>
-          </tr>
-          <tr>
-            <th>Y</th>
-            <td>{cursorY}</td>
-          </tr>
-          <tr>
-            <th>Biome</th>
-            <td>{cell.biome}</td>
-          </tr>
-          <tr>
-            <th>Height</th>
-            <td>{cell.height.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <th>Moisture</th>
-            <td>{cell.moisture.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div className="legend">
-        <h3>Legend</h3>
-        <ul>
-          <li><span className="glyph">~</span> water</li>
-          <li><span className="glyph">^</span> mountain</li>
-          <li><span className="glyph">.</span> desert</li>
-          <li><span className="glyph">"</span> swamp</li>
-          <li><span className="glyph">,</span> plains</li>
-          <li><span className="glyph">@</span> cursor</li>
-        </ul>
-        <p className="hint">Move: arrow keys / WASD</p>
+    <div className={`inspector${collapsed ? ' inspector--collapsed' : ''}`}>
+      <div className="inspector-header">
+        <span className="inspector-title">Inspector</span>
+        <button
+          className="inspector-toggle"
+          onClick={() => setCollapsed((v) => !v)}
+          aria-label={collapsed ? 'Expand inspector' : 'Collapse inspector'}
+        >
+          {collapsed ? '▼' : '▲'}
+        </button>
       </div>
+
+      {collapsed ? (
+        /* Compact one-line summary */
+        <div className="inspector-compact">
+          <span className="ic-item">seed <b>{seed}</b></span>
+          <span className="ic-sep">|</span>
+          <span className="ic-item">({cursorX},{cursorY})</span>
+          <span className="ic-sep">|</span>
+          <span className="ic-item">{cell.biome}</span>
+        </div>
+      ) : (
+        /* Full detail view */
+        <>
+          <table>
+            <tbody>
+              <tr><th>Seed</th><td>{seed}</td></tr>
+              <tr><th>X</th><td>{cursorX}</td></tr>
+              <tr><th>Y</th><td>{cursorY}</td></tr>
+              <tr><th>Biome</th><td>{cell.biome}</td></tr>
+              <tr><th>Height</th><td>{cell.height.toFixed(2)}</td></tr>
+              <tr><th>Moisture</th><td>{cell.moisture.toFixed(2)}</td></tr>
+            </tbody>
+          </table>
+          <div className="legend">
+            <h3>Legend</h3>
+            <ul>
+              <li><span className="glyph">~</span> water</li>
+              <li><span className="glyph">^</span> mountain</li>
+              <li><span className="glyph">.</span> desert</li>
+              <li><span className="glyph">"</span> swamp</li>
+              <li><span className="glyph">,</span> plains</li>
+              <li><span className="glyph">@</span> cursor</li>
+            </ul>
+            <p className="hint">Move: arrow keys / WASD / D-pad</p>
+          </div>
+        </>
+      )}
     </div>
   );
 }
