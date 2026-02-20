@@ -1,5 +1,7 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import type { Overworld } from '../world/types';
+import type { Entity } from '../world/entities';
+import { ENTITY_GLYPH } from '../world/entities';
 import { BIOME_CHAR, getTileClass } from './tileClasses';
 
 const SWIPE_THRESHOLD = 25;
@@ -20,11 +22,12 @@ type Props = {
   world: Overworld;
   cursorX: number;
   cursorY: number;
+  entities: Entity[];
   onMoveCursor: (dx: number, dy: number) => void;
   onSetCursor: (x: number, y: number) => void;
 };
 
-export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }: Props) {
+export function GridView({ world, cursorX, cursorY, entities, onMoveCursor, onSetCursor }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const preRef = useRef<HTMLPreElement>(null);
   // Invisible single-char span — measures actual rendered char dimensions.
@@ -129,19 +132,40 @@ export function GridView({ world, cursorX, cursorY, onMoveCursor, onSetCursor }:
     pointerStart.current = null;
   }, []);
 
+  // ---- Build entity lookup map -----------------------------------------------
+  const entityAt = new Map<number, Entity>();
+  for (const e of entities) {
+    entityAt.set(e.y * world.width + e.x, e);
+  }
+
   // ---- Render: one <span> per cell with biome colour ----------------------
   //
   // Flat children array: spans for each cell, '\n' text nodes between rows.
   // React diffs this efficiently — only the 2 cells that change on cursor move
   // are updated in the DOM.
+  // Priority: cursor > entity > biome
   const children: React.ReactNode[] = [];
   for (let y = 0; y < world.height; y++) {
     for (let x = 0; x < world.width; x++) {
       const isCursor = x === cursorX && y === cursorY;
       const cell = world.cells[y * world.width + x];
-      const glyph = isCursor ? '@' : (BIOME_CHAR[cell.biome] ?? '?');
+      const entity = entityAt.get(y * world.width + x);
+
+      let glyph: string;
+      let className: string;
+      if (isCursor) {
+        glyph = '@';
+        className = 'tile-player';
+      } else if (entity) {
+        glyph = ENTITY_GLYPH[entity.kind];
+        className = `tile-entity tile-entity--${entity.kind}`;
+      } else {
+        glyph = BIOME_CHAR[cell.biome] ?? '?';
+        className = getTileClass(cell.biome, false);
+      }
+
       children.push(
-        <span key={y * world.width + x} className={getTileClass(cell.biome, isCursor)}>
+        <span key={y * world.width + x} className={className}>
           {glyph}
         </span>,
       );

@@ -290,6 +290,55 @@
 }
 
 /* =====================================================================
+   ENTITY TILE COLOURS
+   ===================================================================== */
+.tile-entity             { font-weight: bold; }
+.tile-entity--goat       { color: #F5CBA7; }   /* soft tan  */
+.tile-entity--bird       { color: #AED6F1; }   /* sky blue  */
+.tile-entity--frog       { color: #A9DFBF; }   /* mint green */
+.tile-entity--wanderer   { color: #D7BDE2; }   /* lavender  */
+
+/* =====================================================================
+   CONSOLE LOG  — fixed-height strip at the bottom of the app
+   ===================================================================== */
+.console-log {
+  flex-shrink: 0;
+  height: 5.5rem;
+  overflow-y: auto;
+  background-color: #050505;
+  border: 1px solid #222;
+  padding: 0.3rem 0.6rem;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  /* Korean font stack */
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'NanumGothic', 'Courier New', Courier, monospace;
+  scroll-behavior: smooth;
+}
+
+.console-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.console-line--system   { color: #888; }
+.console-line--encounter{ color: #C5E1A5; }   /* light green  */
+.console-line--tick     { color: #546E7A; }   /* muted blue-grey */
+.console-line--info     { color: #80CBC4; }   /* teal         */
+
+.console-cursor {
+  color: #aaa;
+  animation: blink 0.8s step-start infinite;
+}
+
+@keyframes blink {
+  50% { opacity: 0; }
+}
+
+/* =====================================================================
    MOBILE LAYOUT  ≤ 900px
    Stack vertically: toolbar → grid (fills space) → inspector (strip) → d-pad
    ===================================================================== */
@@ -347,5 +396,11 @@
   /* Toolbar: compress seed input */
   input[type='number'] {
     width: 8em;
+  }
+
+  /* Console: shorter on mobile to save vertical space */
+  .console-log {
+    height: 4rem;
+    font-size: 0.72rem;
   }
 }
